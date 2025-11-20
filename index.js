@@ -175,6 +175,115 @@ app.get('/_ah/health', (_req, res) => {
   res.status(200).send('ok');
 });
 
+// Desktop Agent Endpoints (MUST be before app.use('/api', apiRouter))
+app.post('/api/desktop-agent/register', async (req, res) => {
+  try {
+    const { tenantId, phoneNumber, deviceName, status } = req.body;
+    
+    if (!tenantId || !phoneNumber) {
+      return res.status(400).json({ error: 'Missing tenantId or phoneNumber' });
+    }
+
+    console.log(`[DESKTOP_AGENT] Agent connected: ${tenantId} | Phone: ${phoneNumber} | Device: ${deviceName}`);
+
+    // Update tenant WhatsApp connection status
+    const { data, error } = await supabase
+      .from('tenants')
+      .update({
+        whatsapp_phone: phoneNumber,
+        status: status || 'connected'
+      })
+      .eq('id', tenantId);
+
+    if (error) {
+      console.error('[DESKTOP_AGENT] Supabase error:', error);
+      // Don't fail if database update fails - agent can still work
+      console.warn('[DESKTOP_AGENT] Continuing despite database error...');
+    }
+
+    res.json({ 
+      ok: true, 
+      message: 'Desktop agent registered successfully',
+      tenantId,
+      phoneNumber
+    });
+
+  } catch (error) {
+    console.error('[DESKTOP_AGENT] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/desktop-agent/process-message', async (req, res) => {
+  try {
+    const { tenantId, from, message, timestamp, messageId } = req.body;
+    
+    if (!tenantId || !from || !message) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log(`[DESKTOP_AGENT] Message from ${from} (${tenantId}): ${message.substring(0, 50)}...`);
+
+    // Format the request to match the existing customer handler format
+    const formattedReq = {
+      body: {
+        customer_phone: from.replace('@c.us', ''),
+        customer_message: message,
+        tenant_id: tenantId
+      }
+    };
+
+    // Create a response wrapper to capture the AI reply
+    let aiReply = null;
+    const formattedRes = {
+      status: (code) => ({
+        json: (data) => {
+          if (data.reply) {
+            aiReply = data.reply;
+          }
+          return { status: code, data };
+        }
+      }),
+      json: (data) => {
+        if (data.reply) {
+          aiReply = data.reply;
+        }
+        return data;
+      }
+    };
+
+    // Process through existing customer handler
+    await customerHandler.handleCustomerTextMessage(formattedReq, formattedRes);
+
+    // Return AI response to desktop agent
+    res.json({
+      ok: true,
+      reply: aiReply || 'Message received',
+      messageId,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('[DESKTOP_AGENT] Message processing error:', error);
+    res.status(500).json({ 
+      ok: false,
+      error: 'Failed to process message',
+      reply: 'Sorry, I encountered an error processing your message. Please try again.'
+    });
+  }
+});
+
+app.post('/api/desktop-agent/message-sent', async (req, res) => {
+  try {
+    const { tenantId, messageId, status } = req.body;
+    console.log(`[DESKTOP_AGENT] Message sent confirmation: ${messageId} | Status: ${status}`);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[DESKTOP_AGENT] Message sent error:', error);
+    res.status(500).json({ error: 'Failed to track message' });
+  }
+});
+
 // Use the routers for their respective paths
 app.use('/webhook', webhookRouter);
 app.use('/status', statusWebhookRouter);
@@ -1048,6 +1157,198 @@ app.use('/api/*', (req, res) => {
 process.on('unhandledRejection', (err) => {
   console.error('[UNHANDLED_REJECTION]', err);
 });
+
+// ============================================
+// Customer Portal API Endpoints
+// ============================================
+
+// Agent Login Page
+app.get('/agent-login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'agent-login.html'));
+});
+
+// Agent Login API
+app.post('/api/agent-login', async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Missing phone or password' });
+    }
+
+    // Query tenant by phone
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('phone', phone)
+      .single();
+
+    if (error || !tenant) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // TODO: Add password verification (use bcrypt in production)
+    // For now, simple check or skip password
+    
+    console.log(`[AGENT_LOGIN] Login successful: ${phone} | Tenant: ${tenant.id}`);
+    
+    res.json({
+      ok: true,
+      tenantId: tenant.id,
+      email: tenant.email,
+      businessName: tenant.business_name
+    });
+
+  } catch (error) {
+    console.error('[AGENT_LOGIN] Error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Agent Register API
+app.post('/api/agent-register', async (req, res) => {
+  try {
+    const { phone, email, businessName, password } = req.body;
+    
+    if (!phone || !email || !businessName) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Generate tenant ID
+    const tenantId = `TENANT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create tenant
+    const { data, error } = await supabase
+      .from('tenants')
+      .insert({
+        id: tenantId,
+        phone: phone,
+        email: email,
+        business_name: businessName,
+        status: 'pending',
+        plan: 'free',
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[AGENT_REGISTER] Supabase error:', error);
+      return res.status(500).json({ error: 'Registration failed' });
+    }
+
+    console.log(`[AGENT_REGISTER] New tenant: ${tenantId} | ${email}`);
+    
+    res.json({
+      ok: true,
+      tenantId: tenantId,
+      email: email,
+      businessName: businessName
+    });
+
+  } catch (error) {
+    console.error('[AGENT_REGISTER] Error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// Register new tenant
+app.post('/api/register-tenant', async (req, res) => {
+  try {
+    const { tenantId, email } = req.body;
+    
+    if (!tenantId || !email) {
+      return res.status(400).json({ error: 'Missing tenantId or email' });
+    }
+
+    // Save tenant to database
+    const { data, error } = await supabase
+      .from('tenants')
+      .upsert({
+        id: tenantId,
+        email: email,
+        created_at: new Date().toISOString(),
+        status: 'active',
+        plan: 'free'
+      }, {
+        onConflict: 'id'
+      });
+
+    if (error) {
+      console.error('[REGISTER_TENANT] Supabase error:', error);
+      return res.status(500).json({ error: 'Failed to register tenant' });
+    }
+
+    console.log(`[REGISTER_TENANT] New tenant registered: ${tenantId} (${email})`);
+    res.json({ 
+      ok: true, 
+      tenantId, 
+      message: 'Tenant registered successfully' 
+    });
+
+  } catch (error) {
+    console.error('[REGISTER_TENANT] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get tenant status and stats
+app.get('/api/status', async (req, res) => {
+  try {
+    const tenantId = req.query.tenant_id;
+    
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Missing tenant_id' });
+    }
+
+    // Check if desktop agent is connected (you'll implement this based on your architecture)
+    const agentConnected = false; // TODO: Check actual connection status
+    const whatsappConnected = false; // TODO: Check WhatsApp connection status
+
+    // Get message count for today
+    const today = new Date().toISOString().split('T')[0];
+    const { data: messages, error: msgError } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('created_at', today);
+
+    // Get order count
+    const { data: orders, error: orderError } = await supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
+
+    // Get unique customer count
+    const { data: customers, error: custError } = await supabase
+      .from('customers')
+      .select('phone', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
+
+    res.json({
+      agentConnected,
+      whatsappConnected,
+      botReady: true,
+      messagesCount: messages || 0,
+      ordersCount: orders || 0,
+      customersCount: customers || 0
+    });
+
+  } catch (error) {
+    console.error('[STATUS] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Serve customer portal pages
+app.get('/customer-portal', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'customer-portal.html'));
+});
+
+app.get('/customer-dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'customer-dashboard.html'));
+});
+
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT_EXCEPTION]', err);
 });
