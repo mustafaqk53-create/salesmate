@@ -22,6 +22,9 @@ let TENANT_ID = null; // Will be fetched from cloud based on phone
 const API_KEY = process.env.API_KEY || '';
 let isAuthenticated = true; // Auto-authenticate
 
+// Global WhatsApp client for broadcast access
+global.whatsappClient = null;
+
 // Find Chrome executable
 function findChrome() {
     const possiblePaths = [
@@ -64,6 +67,56 @@ localApp.get('/health', (req, res) => {
         tenantId: TENANT_ID,
         timestamp: new Date().toISOString()
     });
+});
+
+// Broadcast message endpoint
+localApp.post('/broadcast', async (req, res) => {
+    try {
+        const { phoneNumbers, message: broadcastMessage } = req.body;
+        
+        if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+            return res.status(400).json({ error: 'Phone numbers array required' });
+        }
+        
+        if (!broadcastMessage) {
+            return res.status(400).json({ error: 'Message required' });
+        }
+        
+        if (!global.whatsappClient) {
+            return res.status(503).json({ error: 'WhatsApp not connected' });
+        }
+        
+        console.log(`\n📢 Broadcasting to ${phoneNumbers.length} contacts...`);
+        
+        const results = [];
+        for (const phone of phoneNumbers) {
+            try {
+                const cleanPhone = phone.replace(/[^0-9]/g, '');
+                const chatId = `${cleanPhone}@c.us`;
+                
+                await global.whatsappClient.sendMessage(chatId, broadcastMessage);
+                console.log(`✅ Sent to ${cleanPhone}`);
+                results.push({ phone: cleanPhone, status: 'sent' });
+                
+                // Delay between messages to avoid spam detection
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (error) {
+                console.error(`❌ Failed to send to ${phone}:`, error.message);
+                results.push({ phone: phone, status: 'failed', error: error.message });
+            }
+        }
+        
+        res.json({ 
+            ok: true, 
+            totalSent: results.filter(r => r.status === 'sent').length,
+            totalFailed: results.filter(r => r.status === 'failed').length,
+            results 
+        });
+        
+    } catch (error) {
+        console.error('❌ Broadcast error:', error);
+        res.status(500).json({ error: 'Broadcast failed' });
+    }
 });
 
 // Authentication callback endpoint
@@ -163,6 +216,9 @@ async function initializeWhatsApp() {
         ]
     }
 });
+
+// Store client globally for broadcast access
+global.whatsappClient = client;
 
 console.log('🚀 Starting Desktop Agent...');
 console.log(`📡 Cloud Server: ${CLOUD_SERVER_URL}`);
