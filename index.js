@@ -1184,11 +1184,15 @@ app.post('/api/agent-login', async (req, res) => {
       .single();
 
     if (error || !tenant) {
+      console.log('[AGENT_LOGIN] Tenant not found:', phone);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // TODO: Add password verification (use bcrypt in production)
-    // For now, simple check or skip password
+    // Verify password (simple comparison - use bcrypt in production)
+    if (tenant.password !== password) {
+      console.log('[AGENT_LOGIN] Invalid password for:', phone);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
     
     console.log(`[AGENT_LOGIN] Login successful: ${phone} | Tenant: ${tenant.id}`);
     
@@ -1210,14 +1214,25 @@ app.post('/api/agent-register', async (req, res) => {
   try {
     const { phone, email, businessName, password } = req.body;
     
-    if (!phone || !email || !businessName) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!phone || !email || !businessName || !password) {
+      return res.status(400).json({ error: 'Missing required fields (phone, email, businessName, password)' });
+    }
+
+    // Check if phone already exists
+    const { data: existingTenant } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('phone', phone)
+      .single();
+
+    if (existingTenant) {
+      return res.status(400).json({ error: 'Phone number already registered' });
     }
 
     // Generate tenant ID
     const tenantId = `TENANT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create tenant
+    // Create tenant with password
     const { data, error } = await supabase
       .from('tenants')
       .insert({
@@ -1225,7 +1240,8 @@ app.post('/api/agent-register', async (req, res) => {
         phone: phone,
         email: email,
         business_name: businessName,
-        status: 'pending',
+        password: password,  // Store password (use bcrypt in production)
+        status: 'registered',
         plan: 'free',
         created_at: new Date().toISOString()
       })
@@ -1234,10 +1250,10 @@ app.post('/api/agent-register', async (req, res) => {
 
     if (error) {
       console.error('[AGENT_REGISTER] Supabase error:', error);
-      return res.status(500).json({ error: 'Registration failed' });
+      return res.status(500).json({ error: 'Registration failed: ' + error.message });
     }
 
-    console.log(`[AGENT_REGISTER] New tenant: ${tenantId} | ${email}`);
+    console.log(`[AGENT_REGISTER] New tenant: ${tenantId} | ${email} | ${businessName}`);
     
     res.json({
       ok: true,
