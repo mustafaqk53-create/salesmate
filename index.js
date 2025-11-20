@@ -301,11 +301,11 @@ app.post('/api/agent-login', async (req, res) => {
     // Sanitize phone: remove +, spaces, dashes
     phone = phone.replace(/[^0-9]/g, '');
 
-    // Query tenant by phone
+    // Query tenant by owner_whatsapp_number (unified field for all systems)
     const { data: tenant, error } = await supabase
       .from('tenants')
       .select('*')
-      .eq('phone', phone)
+      .eq('owner_whatsapp_number', phone)
       .single();
 
     if (error || !tenant) {
@@ -324,7 +324,7 @@ app.post('/api/agent-login', async (req, res) => {
     res.json({
       ok: true,
       tenantId: tenant.id,
-      email: tenant.email,
+      email: tenant.email || '',
       businessName: tenant.business_name
     });
 
@@ -354,7 +354,7 @@ app.post('/api/agent-register', async (req, res) => {
     const { data: existingTenant } = await supabase
       .from('tenants')
       .select('id')
-      .eq('phone', phone)
+      .eq('owner_whatsapp_number', phone)
       .single();
 
     if (existingTenant) {
@@ -367,11 +367,13 @@ app.post('/api/agent-register', async (req, res) => {
     // Prepare insert data (email is optional)
     const insertData = {
       id: tenantId,
-      phone: phone,
+      owner_whatsapp_number: phone,  // Unified phone field for all systems
       business_name: businessName,
       password: password,  // Store password (use bcrypt in production)
       status: 'registered',
       plan: 'free',
+      bot_phone_number: phone,  // Default to owner's number
+      admin_phones: [phone],    // Owner is admin
       created_at: new Date().toISOString()
     };
     
