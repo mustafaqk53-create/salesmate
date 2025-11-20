@@ -361,12 +361,8 @@ app.post('/api/agent-register', async (req, res) => {
       return res.status(400).json({ error: 'Phone number already registered' });
     }
 
-    // Generate tenant ID
-    const tenantId = `TENANT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Prepare insert data (email is optional)
+    // Prepare insert data (let Supabase generate UUID, email is optional)
     const insertData = {
-      id: tenantId,
       owner_whatsapp_number: phone,  // Unified phone field for all systems
       business_name: businessName,
       password: password,  // Store password (use bcrypt in production)
@@ -375,8 +371,7 @@ app.post('/api/agent-register', async (req, res) => {
       status: 'active',
       is_active: true,
       bot_phone_number: phone,  // Default to owner's number
-      admin_phones: [phone],    // Owner is admin
-      created_at: new Date().toISOString()
+      admin_phones: [phone]    // Owner is admin
     };
     
     // Add email only if provided
@@ -396,6 +391,7 @@ app.post('/api/agent-register', async (req, res) => {
       return res.status(500).json({ error: 'Registration failed: ' + error.message });
     }
 
+    const tenantId = data.id; // Get the auto-generated UUID
     console.log(`[AGENT_REGISTER] New tenant: ${tenantId} | ${email || 'no-email'} | ${businessName}`);
     
     res.json({
