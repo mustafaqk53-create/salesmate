@@ -1996,10 +1996,12 @@
             // We'll use a simple fetch with try/catch - CORS will cause error if agent offline
             let desktopAgentOnline = false;
             
+            console.log('[DASHBOARD] Checking desktop agent at localhost:3001...');
+            
             try {
                 // Attempt to reach the desktop agent on user's local machine
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
                 
                 const desktopAgentResponse = await fetch('http://localhost:3001/health', { 
                     method: 'GET',
@@ -2009,18 +2011,25 @@
                 
                 clearTimeout(timeoutId);
                 
+                console.log('[DASHBOARD] Desktop agent response status:', desktopAgentResponse.status);
+                
                 if (desktopAgentResponse.ok) {
                     const desktopAgentData = await desktopAgentResponse.json();
+                    console.log('[DASHBOARD] Desktop agent data:', desktopAgentData);
+                    
                     if (desktopAgentData && desktopAgentData.status === 'running') {
                         desktopAgentOnline = true;
+                        console.log('[DASHBOARD] ✅ Desktop agent is ONLINE!');
                     }
                 }
             } catch (error) {
                 // Agent not running on user's PC (connection refused, timeout, or CORS error)
-                console.log('[DASHBOARD] Desktop agent not available:', error.message);
+                console.log('[DASHBOARD] ⚠️ Desktop agent check failed:', error.message);
+                console.log('[DASHBOARD] Error type:', error.name);
             }
             
             if (desktopAgentOnline) {
+                console.log('[DASHBOARD] Showing GREEN banner for desktop agent');
                 return {
                     connected: true,
                     method: 'desktop_agent',
