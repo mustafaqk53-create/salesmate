@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Desktop Agent - SAK WhatsApp AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="gradient-bg text-white py-8">
+        <div class="container mx-auto px-6">
+            <div class="flex items-center space-x-3 mb-4">
+                <a href="customer-dashboard.html" class="text-white/80 hover:text-white">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            <h1 class="text-4xl font-bold">Download Desktop Agent</h1>
+            <p class="text-white/90 mt-2">Choose your operating system and follow the setup instructions</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-6 py-12">
+        <div class="max-w-4xl mx-auto">
+            <!-- System Requirements -->
+            <div class="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-8">
+                <div class="flex items-start">
+                    <i class="fas fa-info-circle text-blue-600 text-2xl mr-4 mt-1"></i>
+                    <div>
+                        <h3 class="font-bold text-blue-900 mb-2">System Requirements</h3>
+                        <ul class="text-sm text-blue-800 space-y-1">
+                            <li>• Stable internet connection</li>
+                            <li>• Windows 10/11, macOS 10.15+, or Linux</li>
+                            <li>• ~50MB disk space</li>
+                            <li>• Port 3001 available (configurable)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download Options -->
+            <div class="grid md:grid-cols-3 gap-6 mb-8">
+                <!-- Windows -->
+                <div class="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-2xl transition">
+                    <i class="fab fa-windows text-6xl text-blue-600 mb-4"></i>
+                    <h3 class="text-2xl font-bold mb-2">Windows</h3>
+                    <p class="text-gray-600 text-sm mb-6">Windows 10 or later</p>
+                    <a href="/download/desktop-agent-windows.zip" 
+                       onclick="trackDownload('windows')"
+                       class="block bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-xl transition">
+                        <i class="fas fa-download mr-2"></i>Download (15 MB)
+                    </a>
+                </div>
+
+                <!-- macOS -->
+                <div class="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-2xl transition">
+                    <i class="fab fa-apple text-6xl text-gray-800 mb-4"></i>
+                    <h3 class="text-2xl font-bold mb-2">macOS</h3>
+                    <p class="text-gray-600 text-sm mb-6">macOS 10.15 or later</p>
+                    <button disabled class="block w-full bg-gray-300 text-gray-600 px-6 py-3 rounded-lg font-semibold cursor-not-allowed">
+                        <i class="fas fa-clock mr-2"></i>Coming Soon
+                    </button>
+                </div>
+
+                <!-- Linux -->
+                <div class="bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-2xl transition">
+                    <i class="fab fa-linux text-6xl text-orange-600 mb-4"></i>
+                    <h3 class="text-2xl font-bold mb-2">Linux</h3>
+                    <p class="text-gray-600 text-sm mb-6">Ubuntu 20.04 or later</p>
+                    <button disabled class="block w-full bg-gray-300 text-gray-600 px-6 py-3 rounded-lg font-semibold cursor-not-allowed">
+                        <i class="fas fa-clock mr-2"></i>Coming Soon
+                    </button>
+                </div>
+            </div>
+
+            <!-- Setup Instructions -->
+            <div class="bg-white rounded-2xl shadow-lg p-8">
+                <h2 class="text-2xl font-bold mb-6">
+                    <i class="fas fa-list-ol mr-2 text-purple-600"></i>Setup Instructions
+                </h2>
+
+                <div class="space-y-6">
+                    <!-- Step 1 -->
+                    <div class="flex items-start space-x-4 pb-6 border-b">
+                        <div class="flex-shrink-0 w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                            1
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg mb-2">Download & Extract</h3>
+                            <p class="text-gray-600 mb-3">
+                                Click the download button above and save the ZIP file. Extract it to a folder on your computer.
+                            </p>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <code class="text-sm">
+                                    📁 Extracted folder contains:<br>
+                                    &nbsp;&nbsp;• sak-whatsapp-agent.exe<br>
+                                    &nbsp;&nbsp;• .env (configuration)<br>
+                                    &nbsp;&nbsp;• README.txt
+                                </code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="flex items-start space-x-4 pb-6 border-b">
+                        <div class="flex-shrink-0 w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                            2
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg mb-2">Configure Your Tenant ID</h3>
+                            <p class="text-gray-600 mb-3">
+                                Open the <code class="bg-gray-200 px-2 py-1 rounded">.env</code> file with Notepad and update:
+                            </p>
+                            <div class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm mb-3">
+                                TENANT_ID=<span class="text-yellow-400">your-tenant-id-here</span><br>
+                                API_KEY=<span class="text-yellow-400">your-secure-api-key-here</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="tenantIdInput" 
+                                       placeholder="Your Tenant ID" 
+                                       class="flex-1 px-4 py-2 border rounded-lg">
+                                <button onclick="copyToClipboard()" 
+                                        class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">
+                                    Copy ID
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="flex items-start space-x-4 pb-6 border-b">
+                        <div class="flex-shrink-0 w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                            3
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg mb-2">Run the Agent</h3>
+                            <p class="text-gray-600 mb-3">
+                                Double-click <code class="bg-gray-200 px-2 py-1 rounded">sak-whatsapp-agent.exe</code>
+                            </p>
+                            <ul class="space-y-2 text-sm text-gray-600">
+                                <li class="flex items-center">
+                                    <i class="fas fa-check text-green-500 mr-2"></i>
+                                    A command window will open
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-check text-green-500 mr-2"></i>
+                                    A QR code will be displayed
+                                </li>
+                                <li class="flex items-center">
+                                    <i class="fas fa-check text-green-500 mr-2"></i>
+                                    Keep the window open
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="flex-shrink-0 w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                            4
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg mb-2">Link Your WhatsApp</h3>
+                            <p class="text-gray-600 mb-3">
+                                On your phone:
+                            </p>
+                            <ol class="space-y-2 text-sm text-gray-600 list-decimal list-inside">
+                                <li>Open WhatsApp</li>
+                                <li>Go to Settings → Linked Devices</li>
+                                <li>Tap "Link a Device"</li>
+                                <li>Scan the QR code from the agent window</li>
+                                <li>Done! Your AI bot is now live 🎉</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-6 mt-8">
+                <h3 class="font-bold text-yellow-900 mb-4">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Troubleshooting
+                </h3>
+                <div class="space-y-3 text-sm text-yellow-800">
+                    <div>
+                        <strong>QR code not showing?</strong>
+                        <p class="ml-6">Check your internet connection and verify your Tenant ID is correct.</p>
+                    </div>
+                    <div>
+                        <strong>Port already in use?</strong>
+                        <p class="ml-6">Edit .env file and change LOCAL_PORT to 3002 or another available port.</p>
+                    </div>
+                    <div>
+                        <strong>Windows Security warning?</strong>
+                        <p class="ml-6">Click "More info" → "Run anyway". The agent is safe but not code-signed yet.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Support -->
+            <div class="text-center mt-8">
+                <p class="text-gray-600 mb-4">Need help? We're here for you!</p>
+                <div class="flex justify-center space-x-4">
+                    <a href="mailto:support@saksolution.com" class="text-purple-600 hover:underline">
+                        <i class="fas fa-envelope mr-2"></i>Email Support
+                    </a>
+                    <a href="#" class="text-purple-600 hover:underline">
+                        <i class="fas fa-book mr-2"></i>Documentation
+                    </a>
+                    <a href="#" class="text-purple-600 hover:underline">
+                        <i class="fab fa-whatsapp mr-2"></i>WhatsApp Support
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load tenant ID from localStorage
+        const tenantId = localStorage.getItem('tenantId');
+        if (tenantId) {
+            document.getElementById('tenantIdInput').value = tenantId;
+        }
+
+        function copyToClipboard() {
+            const input = document.getElementById('tenantIdInput');
+            input.select();
+            document.execCommand('copy');
+            alert('Tenant ID copied to clipboard!');
+        }
+
+        function trackDownload(platform) {
+            // Track download analytics
+            console.log(`Download started: ${platform}`);
+            
+            // Optional: Send to analytics
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'download', {
+                    'event_category': 'Desktop Agent',
+                    'event_label': platform
+                });
+            }
+        }
+    </script>
+</body>
+</html>

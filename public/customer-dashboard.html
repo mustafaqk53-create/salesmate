@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Dashboard - SAK WhatsApp AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                        <i class="fab fa-whatsapp text-white text-xl"></i>
+                    </div>
+                    <span class="text-xl font-bold">SAK WhatsApp AI</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="userEmail" class="text-gray-600"></span>
+                    <button onclick="logout()" class="text-red-600 hover:text-red-700 transition">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-6 py-8">
+        <!-- Welcome Section -->
+        <div class="gradient-bg text-white rounded-2xl p-8 mb-8">
+            <h1 class="text-3xl font-bold mb-2">Welcome to Your Dashboard! 🎉</h1>
+            <p class="text-white/90">Your AI-powered WhatsApp assistant is ready to go</p>
+        </div>
+
+        <!-- Quick Setup Guide -->
+        <div class="card p-8 mb-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">
+                    <i class="fas fa-rocket mr-2 text-purple-600"></i>Quick Setup
+                </h2>
+                <div id="setupProgress" class="text-sm text-gray-600"></div>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Step 1: Get Tenant ID -->
+                <div class="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0 w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold">
+                        <i class="fas fa-check text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold mb-1">Step 1: Your Tenant ID</h3>
+                        <div class="flex items-center space-x-3">
+                            <code id="tenantIdDisplay" class="bg-white px-4 py-2 rounded border text-purple-600 font-mono font-bold text-lg">
+                                Loading...
+                            </code>
+                            <button onclick="copyTenantId()" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">
+                                <i class="fas fa-copy mr-2"></i>Copy
+                            </button>
+                        </div>
+                        <p class="text-sm text-gray-600 mt-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            You'll need this ID to configure the desktop agent
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 2: Download Agent -->
+                <div id="step2" class="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                        2
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold mb-2">Step 2: Download Desktop Agent</h3>
+                        <div class="flex space-x-3">
+                            <a href="/download/desktop-agent-windows.zip" download class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition">
+                                <i class="fab fa-windows mr-2"></i>Windows
+                            </a>
+                            <a href="/download/desktop-agent-macos.zip" download class="bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 transition">
+                                <i class="fab fa-apple mr-2"></i>macOS
+                            </a>
+                            <a href="/download/desktop-agent-linux.tar.gz" download class="bg-orange-500 text-white px-6 py-3 rounded-lg hover:bg-orange-600 transition">
+                                <i class="fab fa-linux mr-2"></i>Linux
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Configure -->
+                <div id="step3" class="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0 w-8 h-8 bg-gray-300 text-white rounded-full flex items-center justify-center font-bold">
+                        3
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold mb-2">Step 3: Configure Agent</h3>
+                        <ol class="list-decimal list-inside text-sm text-gray-600 space-y-1">
+                            <li>Extract and run the desktop agent</li>
+                            <li>Enter your Tenant ID when prompted</li>
+                            <li>Enter API Key: <code class="bg-white px-2 py-1 rounded text-xs font-mono">your-secure-api-key-here</code></li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Step 4: Scan QR -->
+                <div id="step4" class="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0 w-8 h-8 bg-gray-300 text-white rounded-full flex items-center justify-center font-bold">
+                        4
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold mb-2">Step 4: Link WhatsApp</h3>
+                        <p class="text-sm text-gray-600">
+                            Scan the QR code shown in the desktop agent with your WhatsApp mobile app
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="grid md:grid-cols-3 gap-6 mb-8">
+            <div class="card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-semibold text-gray-700">Desktop Agent</h3>
+                    <div id="agentStatus" class="flex items-center">
+                        <span class="status-dot bg-gray-400 mr-2"></span>
+                        <span class="text-sm text-gray-600">Offline</span>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600">Install and run the agent on your computer</p>
+            </div>
+
+            <div class="card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-semibold text-gray-700">WhatsApp</h3>
+                    <div id="whatsappStatus" class="flex items-center">
+                        <span class="status-dot bg-gray-400 mr-2"></span>
+                        <span class="text-sm text-gray-600">Not Connected</span>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600">Scan QR code to link your account</p>
+            </div>
+
+            <div class="card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-semibold text-gray-700">AI Bot</h3>
+                    <div id="botStatus" class="flex items-center">
+                        <span class="status-dot bg-gray-400 mr-2"></span>
+                        <span class="text-sm text-gray-600">Ready</span>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600">AI is ready to respond</p>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid md:grid-cols-4 gap-6 mb-8">
+            <div class="card p-6">
+                <div class="text-3xl font-bold text-purple-600 mb-2" id="messagesCount">0</div>
+                <div class="text-sm text-gray-600">Messages Today</div>
+            </div>
+            <div class="card p-6">
+                <div class="text-3xl font-bold text-green-600 mb-2" id="ordersCount">0</div>
+                <div class="text-sm text-gray-600">Orders Processed</div>
+            </div>
+            <div class="card p-6">
+                <div class="text-3xl font-bold text-blue-600 mb-2" id="customersCount">0</div>
+                <div class="text-sm text-gray-600">Unique Customers</div>
+            </div>
+            <div class="card p-6">
+                <div class="text-3xl font-bold text-orange-600 mb-2">24/7</div>
+                <div class="text-sm text-gray-600">AI Availability</div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card p-8">
+            <h2 class="text-2xl font-bold mb-6">Quick Actions</h2>
+            <div class="grid md:grid-cols-3 gap-4">
+                <a href="dashboard.html" class="p-6 bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition text-center">
+                    <i class="fas fa-chart-line text-3xl mb-3"></i>
+                    <h3 class="font-semibold">Full Dashboard</h3>
+                    <p class="text-sm text-white/80 mt-2">View detailed analytics</p>
+                </a>
+                <button onclick="showProducts()" class="p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl hover:shadow-lg transition text-center">
+                    <i class="fas fa-box text-3xl mb-3"></i>
+                    <h3 class="font-semibold">Manage Products</h3>
+                    <p class="text-sm text-white/80 mt-2">Add or edit products</p>
+                </button>
+                <button onclick="showSettings()" class="p-6 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl hover:shadow-lg transition text-center">
+                    <i class="fas fa-cog text-3xl mb-3"></i>
+                    <h3 class="font-semibold">Settings</h3>
+                    <p class="text-sm text-white/80 mt-2">Configure your bot</p>
+                </button>
+            </div>
+        </div>
+
+        <!-- Documentation -->
+        <div class="card p-8 mt-8">
+            <h2 class="text-2xl font-bold mb-6">
+                <i class="fas fa-book mr-2 text-purple-600"></i>Documentation & Support
+            </h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-semibold mb-3">Setup Guides</h3>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fas fa-file-alt mr-2"></i>Desktop Agent Installation
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fas fa-file-alt mr-2"></i>WhatsApp Connection Guide
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fas fa-file-alt mr-2"></i>Product Management
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fas fa-file-alt mr-2"></i>Troubleshooting
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="font-semibold mb-3">Get Help</h3>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="mailto:support@sakwhatsapp.com" class="text-purple-600 hover:underline">
+                                <i class="fas fa-envelope mr-2"></i>support@sakwhatsapp.com
+                            </a>
+                        </li>
+                        <li>
+                            <a href="tel:+966XXXXXXXX" class="text-purple-600 hover:underline">
+                                <i class="fas fa-phone mr-2"></i>+966-XXX-XXXX
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fab fa-whatsapp mr-2"></i>WhatsApp Support
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-purple-600 hover:underline">
+                                <i class="fas fa-comments mr-2"></i>Live Chat
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if user is logged in
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        if (!userData.email) {
+            window.location.href = 'login.html';
+        }
+
+        // Display user email
+        document.getElementById('userEmail').textContent = userData.email;
+
+        // Generate or retrieve tenant ID
+        let tenantId = localStorage.getItem('tenantId');
+        if (!tenantId) {
+            // Generate unique tenant ID
+            tenantId = 'TENANT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            localStorage.setItem('tenantId', tenantId);
+            
+            // Save to backend
+            saveTenantToBackend(tenantId, userData.email);
+        }
+        document.getElementById('tenantIdDisplay').textContent = tenantId;
+
+        // Copy tenant ID function
+        function copyTenantId() {
+            const tenantId = document.getElementById('tenantIdDisplay').textContent;
+            navigator.clipboard.writeText(tenantId).then(() => {
+                alert('Tenant ID copied to clipboard!');
+            });
+        }
+
+        // Save tenant to backend
+        async function saveTenantToBackend(tenantId, email) {
+            try {
+                const response = await fetch('/api/register-tenant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenantId, email })
+                });
+                console.log('Tenant registered:', await response.json());
+            } catch (error) {
+                console.error('Error registering tenant:', error);
+            }
+        }
+
+        // Check connection status (polling)
+        async function checkStatus() {
+            try {
+                const response = await fetch(`/api/status?tenant_id=${tenantId}`);
+                const data = await response.json();
+                
+                // Update status indicators
+                updateStatus('agentStatus', data.agentConnected);
+                updateStatus('whatsappStatus', data.whatsappConnected);
+                updateStatus('botStatus', data.botReady);
+
+                // Update stats
+                document.getElementById('messagesCount').textContent = data.messagesCount || 0;
+                document.getElementById('ordersCount').textContent = data.ordersCount || 0;
+                document.getElementById('customersCount').textContent = data.customersCount || 0;
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        function updateStatus(elementId, connected) {
+            const element = document.getElementById(elementId);
+            const dot = element.querySelector('.status-dot');
+            const text = element.querySelector('span:last-child');
+            
+            if (connected) {
+                dot.classList.remove('bg-gray-400');
+                dot.classList.add('bg-green-500');
+                text.textContent = 'Connected';
+                text.classList.remove('text-gray-600');
+                text.classList.add('text-green-600');
+            } else {
+                dot.classList.remove('bg-green-500');
+                dot.classList.add('bg-gray-400');
+            }
+        }
+
+        // Poll status every 5 seconds
+        setInterval(checkStatus, 5000);
+        checkStatus();
+
+        function logout() {
+            localStorage.removeItem('userData');
+            window.location.href = 'login.html';
+        }
+
+        function showProducts() {
+            window.location.href = 'dashboard.html#products';
+        }
+
+        function showSettings() {
+            window.location.href = 'dashboard.html#settings';
+        }
+    </script>
+</body>
+</html>

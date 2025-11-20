@@ -134,3 +134,14 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# WhatsApp Web Session Cache
+.wwebjs_auth/
+.wwebjs_cache/
+public/download/.wwebjs_auth/
+public/download/.wwebjs_cache/
+
+# Desktop Agent Executable (too large for GitHub)
+public/download/*.exe
+public/download/*.zip
+desktop-agent/.wwebjs_auth/

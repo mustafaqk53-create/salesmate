@@ -8,20 +8,152 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const notifier = require('node-notifier');
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
+const { exec } = require('child_process');
 require('dotenv').config();
 
 // Configuration
 const CLOUD_SERVER_URL = process.env.CLOUD_SERVER_URL || 'http://13.62.57.240:8080';
-const TENANT_ID = process.env.TENANT_ID || 'default-tenant';
+const LOCAL_PORT = process.env.LOCAL_PORT || 3001;
+let TENANT_ID = process.env.TENANT_ID || null;
 const API_KEY = process.env.API_KEY || '';
+let isAuthenticated = false;
 
-// WhatsApp Client with local session storage
-const client = new Client({
+// Find Chrome executable
+function findChrome() {
+    const possiblePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+    ];
+    
+    for (const chromePath of possiblePaths) {
+        if (fs.existsSync(chromePath)) {
+            console.log(`✅ Found browser: ${chromePath}`);
+            return chromePath;
+        }
+    }
+    
+    console.log('⚠️  No Chrome/Edge found. Install Google Chrome from: https://www.google.com/chrome/');
+    return null;
+}
+
+const executablePath = findChrome();
+
+if (!executablePath) {
+    console.error('\n❌ ERROR: Chrome or Edge browser not found!');
+    console.error('📥 Please install Google Chrome from: https://www.google.com/chrome/');
+    console.error('   Or Microsoft Edge from: https://www.microsoft.com/edge');
+    process.exit(1);
+}
+
+// Create local Express server for authentication callback
+const localApp = express();
+localApp.use(express.json());
+
+// Health check endpoint
+localApp.get('/health', (req, res) => {
+    res.json({ 
+        status: 'running',
+        authenticated: isAuthenticated,
+        tenantId: TENANT_ID,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Authentication callback endpoint
+localApp.post('/auth-callback', (req, res) => {
+    const { tenantId, phone, email } = req.body;
+    
+    if (!tenantId) {
+        return res.status(400).json({ error: 'Missing tenant ID' });
+    }
+    
+    TENANT_ID = tenantId;
+    isAuthenticated = true;
+    
+    // Save to .env file
+    const envPath = path.join(__dirname, '.env');
+    let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    
+    if (envContent.includes('TENANT_ID=')) {
+        envContent = envContent.replace(/TENANT_ID=.*/, `TENANT_ID=${tenantId}`);
+    } else {
+        envContent += `\nTENANT_ID=${tenantId}`;
+    }
+    
+    fs.writeFileSync(envPath, envContent);
+    
+    console.log(`\n✅ Authenticated as: ${email || phone}`);
+    console.log(`🆔 Tenant ID: ${tenantId}`);
+    
+    res.json({ 
+        ok: true, 
+        message: 'Authentication successful. You can close this window.',
+        tenantId 
+    });
+    
+    // Initialize WhatsApp client after authentication
+    setTimeout(() => {
+        initializeWhatsApp();
+    }, 2000);
+});
+
+// Start local server
+localApp.listen(LOCAL_PORT, () => {
+    console.log(`🏥 Local server running on http://localhost:${LOCAL_PORT}`);
+});
+
+console.log('🚀 Starting Desktop Agent...');
+console.log(`📡 Cloud Server: ${CLOUD_SERVER_URL}`);
+
+// Check if already authenticated
+if (TENANT_ID && TENANT_ID !== 'your-tenant-id-here' && TENANT_ID !== 'default-tenant') {
+    console.log(`👤 Existing Tenant ID: ${TENANT_ID}`);
+    isAuthenticated = true;
+    console.log('✅ Already authenticated. Initializing WhatsApp...');
+    initializeWhatsApp();
+} else {
+    console.log('\n🔐 Authentication Required');
+    console.log('📱 Opening browser for login...\n');
+    
+    // Open browser to login page with callback URL
+    const loginUrl = `${CLOUD_SERVER_URL}/agent-login?callback=http://localhost:${LOCAL_PORT}/auth-callback`;
+    
+    // Open browser based on OS
+    const openCommand = process.platform === 'win32' ? 'start' : 
+                       process.platform === 'darwin' ? 'open' : 'xdg-open';
+    
+    exec(`${openCommand} "${loginUrl}"`, (error) => {
+        if (error) {
+            console.error('❌ Failed to open browser automatically.');
+            console.log(`\n📋 Please open this URL manually:\n${loginUrl}\n`);
+        }
+    });
+    
+    console.log('⏳ Waiting for authentication...');
+}
+
+function initializeWhatsApp() {
+    if (!TENANT_ID) {
+        console.error('❌ Cannot initialize WhatsApp: No Tenant ID');
+        return;
+    }
+    
+    console.log('\n🔄 Initializing WhatsApp client...');
+    
+    // WhatsApp Client with local session storage
+    const client = new Client({
     authStrategy: new LocalAuth({
         dataPath: './.wwebjs_auth'
     }),
     puppeteer: {
         headless: true,
+        executablePath: executablePath,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -29,7 +161,6 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
             '--disable-gpu'
         ]
     }
@@ -193,28 +324,12 @@ process.on('SIGINT', async () => {
         // Silent fail
     }
     
-    await client.destroy();
+    if (client) {
+        await client.destroy();
+    }
     process.exit(0);
 });
 
-// Health check endpoint (optional local API)
-const express = require('express');
-const app = express();
-const PORT = process.env.LOCAL_PORT || 3001;
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'running',
-        connected: client.info ? true : false,
-        phoneNumber: client.info ? client.info.wid.user : null,
-        tenantId: TENANT_ID
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`🏥 Health endpoint: http://localhost:${PORT}/health`);
-});
-
 // Initialize WhatsApp client
-console.log('🔄 Initializing WhatsApp client...');
 client.initialize();
+}

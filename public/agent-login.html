@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desktop Agent Login - SAK WhatsApp AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 100%;
+            padding: 40px;
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .logo p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        input[type="tel"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102,126,234,0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            color: #666;
+            font-weight: 600;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .success-message {
+            text-align: center;
+            display: none;
+        }
+        
+        .success-message .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .success-message h2 {
+            color: #28a745;
+            margin-bottom: 15px;
+        }
+        
+        .success-message p {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .tenant-id-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🚀 Desktop Agent Login</h1>
+            <p>Connect your WhatsApp Business Account</p>
+        </div>
+        
+        <div class="alert alert-success" id="successAlert"></div>
+        <div class="alert alert-error" id="errorAlert"></div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('login')">Login</div>
+            <div class="tab" onclick="switchTab('register')">Register</div>
+        </div>
+        
+        <!-- Login Form -->
+        <div id="loginTab" class="tab-content active">
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginPhone">Phone Number</label>
+                    <input type="tel" id="loginPhone" placeholder="+971 50 123 4567" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn">Login & Connect</button>
+            </form>
+        </div>
+        
+        <!-- Register Form -->
+        <div id="registerTab" class="tab-content">
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="regPhone">Phone Number</label>
+                    <input type="tel" id="regPhone" placeholder="+971 50 123 4567" required>
+                </div>
+                <div class="form-group">
+                    <label for="regEmail">Email Address</label>
+                    <input type="email" id="regEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="regBusinessName">Business Name</label>
+                    <input type="text" id="regBusinessName" placeholder="Your Business Name" required>
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="Create a password" required>
+                </div>
+                <button type="submit" class="btn">Register & Connect</button>
+            </form>
+        </div>
+        
+        <!-- Success Message -->
+        <div class="success-message" id="successMessage">
+            <div class="icon">✅</div>
+            <h2>Authentication Successful!</h2>
+            <p>Your Tenant ID:</p>
+            <div class="tenant-id-display" id="tenantIdDisplay"></div>
+            <p style="margin-top: 15px; color: #28a745; font-weight: 600;">
+                Return to your desktop agent to scan QR code
+            </p>
+            <p style="margin-top: 10px; font-size: 14px; color: #666;">
+                You can close this window
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const callbackUrl = urlParams.get('callback');
+        
+        if (!callbackUrl) {
+            showError('Invalid callback URL');
+        }
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'login') {
+                document.querySelector('.tabs .tab:first-child').classList.add('active');
+                document.getElementById('loginTab').classList.add('active');
+            } else {
+                document.querySelector('.tabs .tab:last-child').classList.add('active');
+                document.getElementById('registerTab').classList.add('active');
+            }
+        }
+        
+        function showError(message) {
+            const errorAlert = document.getElementById('errorAlert');
+            errorAlert.textContent = message;
+            errorAlert.style.display = 'block';
+            setTimeout(() => {
+                errorAlert.style.display = 'none';
+            }, 5000);
+        }
+        
+        function showSuccess(message) {
+            const successAlert = document.getElementById('successAlert');
+            successAlert.textContent = message;
+            successAlert.style.display = 'block';
+            setTimeout(() => {
+                successAlert.style.display = 'none';
+            }, 3000);
+        }
+        
+        async function notifyAgent(tenantId, phone, email) {
+            try {
+                const response = await fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenantId, phone, email })
+                });
+                
+                if (response.ok) {
+                    document.querySelector('.login-container > *:not(.success-message)').forEach(el => {
+                        if (el.id !== 'successMessage') el.style.display = 'none';
+                    });
+                    document.getElementById('tenantIdDisplay').textContent = tenantId;
+                    document.getElementById('successMessage').style.display = 'block';
+                } else {
+                    showError('Failed to connect to desktop agent');
+                }
+            } catch (error) {
+                showError('Failed to connect to desktop agent: ' + error.message);
+            }
+        }
+        
+        // Login Form
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('loginPhone').value;
+            const password = document.getElementById('loginPassword').value;
+            const btn = e.target.querySelector('.btn');
+            
+            btn.disabled = true;
+            btn.textContent = 'Logging in...';
+            
+            try {
+                const response = await fetch('/api/agent-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.tenantId) {
+                    await notifyAgent(data.tenantId, phone, data.email);
+                } else {
+                    showError(data.error || 'Login failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Login & Connect';
+                }
+            } catch (error) {
+                showError('Login failed: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Login & Connect';
+            }
+        });
+        
+        // Register Form
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('regPhone').value;
+            const email = document.getElementById('regEmail').value;
+            const businessName = document.getElementById('regBusinessName').value;
+            const password = document.getElementById('regPassword').value;
+            const btn = e.target.querySelector('.btn');
+            
+            btn.disabled = true;
+            btn.textContent = 'Registering...';
+            
+            try {
+                const response = await fetch('/api/agent-register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, email, businessName, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.tenantId) {
+                    await notifyAgent(data.tenantId, phone, email);
+                } else {
+                    showError(data.error || 'Registration failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Register & Connect';
+                }
+            } catch (error) {
+                showError('Registration failed: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Register & Connect';
+            }
+        });
+    </script>
+</body>
+</html>

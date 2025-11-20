@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAK WhatsApp AI - Customer Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass-effect { backdrop-filter: blur(10px); background: rgba(255,255,255,0.95); border: 1px solid rgba(255,255,255,0.18); }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                        <i class="fab fa-whatsapp text-white text-xl"></i>
+                    </div>
+                    <span class="text-xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                        SAK WhatsApp AI
+                    </span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="#features" class="text-gray-600 hover:text-purple-600 transition">Features</a>
+                    <a href="#pricing" class="text-gray-600 hover:text-purple-600 transition">Pricing</a>
+                    <a href="#setup" class="text-gray-600 hover:text-purple-600 transition">Setup</a>
+                    <a href="login.html" class="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition">
+                        Login
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="gradient-bg text-white py-20">
+        <div class="container mx-auto px-6">
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div>
+                    <div class="inline-block bg-white/20 px-4 py-2 rounded-full mb-6">
+                        <i class="fas fa-robot mr-2"></i>
+                        <span class="text-sm font-medium">AI-Powered Sales Assistant</span>
+                    </div>
+                    <h1 class="text-5xl font-bold mb-6">
+                        Automate Your WhatsApp Sales with AI
+                    </h1>
+                    <p class="text-xl mb-8 text-white/90">
+                        Connect your WhatsApp Business account and let AI handle customer inquiries, 
+                        take orders, and close sales 24/7. No cloud servers needed on your end!
+                    </p>
+                    <div class="flex space-x-4">
+                        <button onclick="scrollToSetup()" class="bg-white text-purple-600 px-8 py-4 rounded-lg font-semibold hover:shadow-2xl transition transform hover:-translate-y-1">
+                            <i class="fas fa-rocket mr-2"></i>Get Started Free
+                        </button>
+                        <button onclick="showDemo()" class="border-2 border-white px-8 py-4 rounded-lg font-semibold hover:bg-white/10 transition">
+                            <i class="fas fa-play mr-2"></i>Watch Demo
+                        </button>
+                    </div>
+                    <div class="mt-8 flex items-center space-x-6">
+                        <div>
+                            <div class="text-3xl font-bold">50+</div>
+                            <div class="text-white/70">Active Businesses</div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold">10K+</div>
+                            <div class="text-white/70">Orders Processed</div>
+                        </div>
+                        <div>
+                            <div class="text-3xl font-bold">24/7</div>
+                            <div class="text-white/70">Availability</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
+                        <img src="https://via.placeholder.com/500x600/667eea/ffffff?text=WhatsApp+AI+Bot" 
+                             alt="Dashboard Preview" 
+                             class="rounded-lg shadow-2xl">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4">Why Choose SAK WhatsApp AI?</h2>
+                <p class="text-xl text-gray-600">Powerful features designed for modern businesses</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover">
+                    <div class="w-16 h-16 bg-purple-100 rounded-xl flex items-center justify-center mb-6">
+                        <i class="fas fa-desktop text-purple-600 text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Desktop Agent</h3>
+                    <p class="text-gray-600 mb-4">
+                        Lightweight desktop application runs on your computer. No expensive cloud servers needed!
+                    </p>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Windows & Mac support</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Low resource usage</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Auto-reconnect</li>
+                    </ul>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover">
+                    <div class="w-16 h-16 bg-indigo-100 rounded-xl flex items-center justify-center mb-6">
+                        <i class="fas fa-brain text-indigo-600 text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Smart AI Assistant</h3>
+                    <p class="text-gray-600 mb-4">
+                        Powered by advanced AI to understand customer intent and respond intelligently.
+                    </p>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Natural conversations</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Product recommendations</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Order processing</li>
+                    </ul>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover">
+                    <div class="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center mb-6">
+                        <i class="fas fa-chart-line text-green-600 text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Analytics Dashboard</h3>
+                    <p class="text-gray-600 mb-4">
+                        Track sales, customer behavior, and bot performance in real-time.
+                    </p>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Sales analytics</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Customer insights</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Export reports</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="setup" class="py-20 bg-gray-100">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4">Get Started in 3 Simple Steps</h2>
+                <p class="text-xl text-gray-600">Setup takes less than 5 minutes</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Step 1 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg text-center">
+                    <div class="w-16 h-16 bg-purple-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
+                        1
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Create Account</h3>
+                    <p class="text-gray-600 mb-6">
+                        Sign up for free and get your unique Tenant ID instantly
+                    </p>
+                    <a href="login.html" class="inline-block bg-purple-100 text-purple-600 px-6 py-2 rounded-lg font-semibold hover:bg-purple-200 transition">
+                        Register Now
+                    </a>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg text-center">
+                    <div class="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
+                        2
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Download Agent</h3>
+                    <p class="text-gray-600 mb-6">
+                        Install our lightweight desktop agent on your computer
+                    </p>
+                    <button onclick="showDownloadOptions()" class="inline-block bg-indigo-100 text-indigo-600 px-6 py-2 rounded-lg font-semibold hover:bg-indigo-200 transition">
+                        Download App
+                    </button>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg text-center">
+                    <div class="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
+                        3
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Scan QR Code</h3>
+                    <p class="text-gray-600 mb-6">
+                        Link your WhatsApp Business account and start selling!
+                    </p>
+                    <button class="inline-block bg-green-100 text-green-600 px-6 py-2 rounded-lg font-semibold cursor-default">
+                        You're Live!
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-20">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4">Simple, Transparent Pricing</h2>
+                <p class="text-xl text-gray-600">No hidden fees. Cancel anytime.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <!-- Free Plan -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg">
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl font-bold mb-2">Starter</h3>
+                        <div class="text-4xl font-bold mb-2">Free</div>
+                        <p class="text-gray-600">Forever</p>
+                    </div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>100 messages/month</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Basic AI responses</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>1 WhatsApp account</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Email support</span>
+                        </li>
+                    </ul>
+                    <a href="login.html" class="block text-center bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                        Get Started
+                    </a>
+                </div>
+
+                <!-- Pro Plan -->
+                <div class="bg-gradient-to-br from-purple-600 to-indigo-600 p-8 rounded-2xl shadow-2xl transform scale-105 text-white">
+                    <div class="text-center mb-6">
+                        <div class="inline-block bg-white/20 px-3 py-1 rounded-full text-sm mb-2">
+                            MOST POPULAR
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2">Professional</h3>
+                        <div class="text-4xl font-bold mb-2">$49</div>
+                        <p class="text-white/80">per month</p>
+                    </div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center">
+                            <i class="fas fa-check mr-3"></i>
+                            <span>Unlimited messages</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check mr-3"></i>
+                            <span>Advanced AI + GPT-4</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check mr-3"></i>
+                            <span>3 WhatsApp accounts</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check mr-3"></i>
+                            <span>Analytics dashboard</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check mr-3"></i>
+                            <span>Priority support</span>
+                        </li>
+                    </ul>
+                    <a href="login.html" class="block text-center bg-white text-purple-600 py-3 rounded-lg font-semibold hover:shadow-xl transition">
+                        Start Free Trial
+                    </a>
+                </div>
+
+                <!-- Enterprise Plan -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg">
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl font-bold mb-2">Enterprise</h3>
+                        <div class="text-4xl font-bold mb-2">Custom</div>
+                        <p class="text-gray-600">Contact us</p>
+                    </div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Everything in Pro</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Unlimited accounts</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Custom AI training</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>Dedicated support</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-500 mr-3"></i>
+                            <span>White-label option</span>
+                        </li>
+                    </ul>
+                    <button onclick="contactSales()" class="block w-full text-center bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                        Contact Sales
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="gradient-bg text-white py-20">
+        <div class="container mx-auto px-6 text-center">
+            <h2 class="text-4xl font-bold mb-6">Ready to Automate Your Sales?</h2>
+            <p class="text-xl mb-8 text-white/90">
+                Join hundreds of businesses already using SAK WhatsApp AI
+            </p>
+            <a href="login.html" class="inline-block bg-white text-purple-600 px-10 py-4 rounded-lg font-semibold text-lg hover:shadow-2xl transition transform hover:-translate-y-1">
+                <i class="fas fa-rocket mr-2"></i>Get Started Free - No Credit Card Required
+            </a>
+        </div>
+    </section>
+
+    <!-- Download Modal -->
+    <div id="downloadModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 max-w-2xl mx-4 relative">
+            <button onclick="closeDownloadModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+            
+            <h3 class="text-3xl font-bold mb-6 text-center">Download Desktop Agent</h3>
+            <p class="text-center text-gray-600 mb-8">Choose your operating system</p>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Windows -->
+                <a href="/download/sak-whatsapp-agent-windows.exe" class="block p-6 border-2 border-gray-200 rounded-xl hover:border-purple-600 hover:shadow-lg transition text-center">
+                    <i class="fab fa-windows text-6xl text-blue-500 mb-4"></i>
+                    <h4 class="text-xl font-bold mb-2">Windows</h4>
+                    <p class="text-sm text-gray-600 mb-4">Windows 10 or later</p>
+                    <div class="bg-purple-100 text-purple-600 py-2 px-4 rounded-lg font-semibold inline-block">
+                        <i class="fas fa-download mr-2"></i>Download
+                    </div>
+                </a>
+
+                <!-- macOS -->
+                <a href="/download/sak-whatsapp-agent-macos.dmg" class="block p-6 border-2 border-gray-200 rounded-xl hover:border-purple-600 hover:shadow-lg transition text-center">
+                    <i class="fab fa-apple text-6xl text-gray-800 mb-4"></i>
+                    <h4 class="text-xl font-bold mb-2">macOS</h4>
+                    <p class="text-sm text-gray-600 mb-4">macOS 10.15 or later</p>
+                    <div class="bg-purple-100 text-purple-600 py-2 px-4 rounded-lg font-semibold inline-block">
+                        <i class="fas fa-download mr-2"></i>Download
+                    </div>
+                </a>
+            </div>
+
+            <div class="mt-8 p-4 bg-blue-50 rounded-lg">
+                <div class="flex items-start">
+                    <i class="fas fa-info-circle text-blue-500 mt-1 mr-3"></i>
+                    <div class="text-sm text-gray-700">
+                        <strong>Note:</strong> You'll need your Tenant ID after registration to configure the agent. 
+                        The desktop agent is lightweight (~50MB) and runs in the background.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function scrollToSetup() {
+            document.getElementById('setup').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showDemo() {
+            alert('Demo video will be available soon!');
+        }
+
+        function showDownloadOptions() {
+            document.getElementById('downloadModal').classList.remove('hidden');
+            document.getElementById('downloadModal').classList.add('flex');
+        }
+
+        function closeDownloadModal() {
+            document.getElementById('downloadModal').classList.add('hidden');
+            document.getElementById('downloadModal').classList.remove('flex');
+        }
+
+        function contactSales() {
+            alert('Please email us at: sales@sakwhatsapp.com or call +966-XXX-XXXX');
+        }
+
+        // Close modal on outside click
+        document.getElementById('downloadModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDownloadModal();
+            }
+        });
+    </script>
+</body>
+</html>
