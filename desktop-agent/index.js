@@ -69,10 +69,18 @@ localApp.get('/health', (req, res) => {
     });
 });
 
-// Broadcast message endpoint
+// Advanced Broadcast endpoint - Handles all dashboard features (image, batch, timing)
 localApp.post('/broadcast', async (req, res) => {
     try {
-        const { phoneNumbers, message: broadcastMessage } = req.body;
+        const { 
+            phoneNumbers, 
+            message: broadcastMessage,
+            imageBase64,
+            messageType = 'text',
+            batchSize = 10,
+            messageDelay = 500,
+            batchDelay = 2000
+        } = req.body;
         
         if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
             return res.status(400).json({ error: 'Phone numbers array required' });
@@ -87,30 +95,83 @@ localApp.post('/broadcast', async (req, res) => {
         }
         
         console.log(`\n📢 Broadcasting to ${phoneNumbers.length} contacts...`);
+        console.log(`   Type: ${messageType}`);
+        console.log(`   Batch Size: ${batchSize}, Message Delay: ${messageDelay}ms, Batch Delay: ${batchDelay}ms`);
         
         const results = [];
-        for (const phone of phoneNumbers) {
-            try {
-                const cleanPhone = phone.replace(/[^0-9]/g, '');
-                const chatId = `${cleanPhone}@c.us`;
-                
-                await global.whatsappClient.sendMessage(chatId, broadcastMessage);
-                console.log(`✅ Sent to ${cleanPhone}`);
-                results.push({ phone: cleanPhone, status: 'sent' });
-                
-                // Delay between messages to avoid spam detection
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } catch (error) {
-                console.error(`❌ Failed to send to ${phone}:`, error.message);
-                results.push({ phone: phone, status: 'failed', error: error.message });
+        let totalSent = 0;
+        let totalFailed = 0;
+        
+        // Process in batches
+        for (let i = 0; i < phoneNumbers.length; i += batchSize) {
+            const batch = phoneNumbers.slice(i, i + batchSize);
+            const batchNum = Math.floor(i / batchSize) + 1;
+            const totalBatches = Math.ceil(phoneNumbers.length / batchSize);
+            
+            console.log(`📦 Batch ${batchNum}/${totalBatches} (${batch.length} contacts)`);
+            
+            for (const phone of batch) {
+                try {
+                    const cleanPhone = phone.replace(/[^0-9]/g, '');
+                    const chatId = `${cleanPhone}@c.us`;
+                    
+                    // Handle image + text or text only
+                    if (messageType === 'image' && imageBase64) {
+                        const { MessageMedia } = require('whatsapp-web.js');
+                        
+                        // Extract base64 data and mime type
+                        let base64Data = imageBase64;
+                        let mimeType = 'image/jpeg';
+                        
+                        if (imageBase64.includes('base64,')) {
+                            const parts = imageBase64.split('base64,');
+                            base64Data = parts[1];
+                            const mimeMatch = parts[0].match(/data:([^;]+)/);
+                            if (mimeMatch) mimeType = mimeMatch[1];
+                        }
+                        
+                        const media = new MessageMedia(mimeType, base64Data);
+                        await global.whatsappClient.sendMessage(chatId, media, { caption: broadcastMessage });
+                        console.log(`✅ Sent image to ${cleanPhone}`);
+                    } else {
+                        await global.whatsappClient.sendMessage(chatId, broadcastMessage);
+                        console.log(`✅ Sent text to ${cleanPhone}`);
+                    }
+                    
+                    results.push({ phone: cleanPhone, status: 'sent', timestamp: new Date().toISOString() });
+                    totalSent++;
+                    
+                    // Delay between messages
+                    if (messageDelay > 0) {
+                        await new Promise(resolve => setTimeout(resolve, messageDelay));
+                    }
+                } catch (error) {
+                    console.error(`❌ Failed to send to ${phone}:`, error.message);
+                    results.push({ phone: phone, status: 'failed', error: error.message, timestamp: new Date().toISOString() });
+                    totalFailed++;
+                }
+            }
+            
+            // Delay between batches
+            if (i + batchSize < phoneNumbers.length && batchDelay > 0) {
+                console.log(`⏳ Waiting ${batchDelay}ms before next batch...`);
+                await new Promise(resolve => setTimeout(resolve, batchDelay));
             }
         }
         
+        console.log(`\n📊 Broadcast complete: ${totalSent} sent, ${totalFailed} failed`);
+        
         res.json({ 
             ok: true, 
-            totalSent: results.filter(r => r.status === 'sent').length,
-            totalFailed: results.filter(r => r.status === 'failed').length,
-            results 
+            totalSent,
+            totalFailed,
+            results,
+            summary: {
+                total: phoneNumbers.length,
+                sent: totalSent,
+                failed: totalFailed,
+                successRate: ((totalSent / phoneNumbers.length) * 100).toFixed(2) + '%'
+            }
         });
         
     } catch (error) {

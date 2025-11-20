@@ -2,10 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../services/config');
 const { sendMessage, sendMessageWithImage } = require('../../services/whatsappService');
+const { sendViaDesktopAgent, isDesktopAgentOnline } = require('../../services/desktopAgentBridge');
 
 /**
  * POST /api/broadcast/send
  * Send or schedule a broadcast message to multiple recipients
+ * 
+ * PRIORITY: Desktop Agent (FREE) → Maytapi (PAID FALLBACK)
  */
 router.post('/send', async (req, res) => {
     try {
@@ -20,7 +23,8 @@ router.post('/send', async (req, res) => {
             imageBase64,
             batchSize = 10,
             messageDelay = 500,
-            batchDelay = 2000
+            batchDelay = 2000,
+            forceMethod // 'desktop_agent' or 'maytapi' - for testing
         } = req.body;
 
         console.log('[BROADCAST_API] Request:', { 
@@ -31,7 +35,8 @@ router.post('/send', async (req, res) => {
             scheduleType,
             batchSize,
             messageDelay,
-            batchDelay
+            batchDelay,
+            forceMethod
         });
 
         // Validate required fields
@@ -58,14 +63,58 @@ router.post('/send', async (req, res) => {
             });
         }
 
-        // Use phone_number from tenant
+        // Priority 1: Try Desktop Agent (FREE!)
+        if (forceMethod !== 'maytapi') {
+            console.log('[BROADCAST_API] 🔍 Checking desktop agent availability...');
+            
+            const agentOnline = await isDesktopAgentOnline(tenantId);
+            
+            if (agentOnline) {
+                console.log('[BROADCAST_API] ✅ Desktop Agent ONLINE - Using FREE local WhatsApp!');
+                
+                const broadcastData = {
+                    recipients,
+                    message,
+                    messageType: messageType || 'text',
+                    imageBase64,
+                    batchSize,
+                    messageDelay,
+                    batchDelay
+                };
+                
+                const result = await sendViaDesktopAgent(tenantId, broadcastData);
+                
+                if (result.success) {
+                    return res.json({
+                        success: true,
+                        message: `Broadcast sent via Desktop Agent (FREE)! ${result.totalSent} sent, ${result.totalFailed} failed.`,
+                        method: 'desktop_agent',
+                        details: {
+                            total: recipients.length,
+                            sent: result.totalSent,
+                            failed: result.totalFailed,
+                            successRate: result.summary?.successRate,
+                            status: 'completed'
+                        }
+                    });
+                } else {
+                    console.log('[BROADCAST_API] ⚠️ Desktop Agent failed, falling back to Maytapi...');
+                }
+            } else {
+                console.log('[BROADCAST_API] ⚠️ Desktop Agent OFFLINE - Falling back to Maytapi (PAID)');
+            }
+        }
+
+        // Priority 2: Fallback to Maytapi (PAID)
+        console.log('[BROADCAST_API] 💰 Using Maytapi (PAID service)');
+        
         const phoneNumberId = tenant.phone_number;
 
         if (scheduleType === 'now') {
             // Use the broadcastService to schedule the messages
             const { scheduleBroadcast } = require('../../services/broadcastService');
             
-            console.log('[BROADCAST_API] Scheduling broadcast via broadcastService');
+            console.log('[BROADCAST_API] Scheduling broadcast via broadcastService (Maytapi)');
             
             try {
                 const result = await scheduleBroadcast(
@@ -90,7 +139,8 @@ router.post('/send', async (req, res) => {
                 
                 return res.json({
                     success: true,
-                    message: `Broadcast queued! Processing ${recipients.length} recipients in background.`,
+                    message: `Broadcast queued via Maytapi! Processing ${recipients.length} recipients in background.`,
+                    method: 'maytapi',
                     details: {
                         total: recipients.length,
                         status: 'queued',
