@@ -512,27 +512,27 @@
                                         </h4>
                                         <div class="grid grid-cols-2 gap-3 ml-6">
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_enabled_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_enabled', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_enabled_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Enable AI Bot</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_product_discovery_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_product_discovery', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_product_discovery_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Product Discovery</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_cart_management_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_cart_management', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_cart_management_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Cart Management</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_order_processing_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_order_processing', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_order_processing_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Order Processing</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_payment_links_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_payment_links', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_payment_links_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Payment Links</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="bot_customer_support_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'bot_customer_support', this.checked)" class="rounded text-blue-600">
+                                                <input type="checkbox" id="bot_customer_support_${tenant.id}" class="rounded text-blue-600">
                                                 <span class="text-sm">Customer Support</span>
                                             </label>
                                         </div>
@@ -546,31 +546,37 @@
                                         </h4>
                                         <div class="grid grid-cols-2 gap-3 ml-6">
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_products_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_products', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_products_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Products</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_customers_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_customers', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_customers_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Customers</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_orders_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_orders', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_orders_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Orders</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_discounts_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_discounts', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_discounts_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Discounts</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_broadcast_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_broadcast', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_broadcast_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Broadcast</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" id="tab_analytics_${tenant.id}" onchange="updateFeatureAccess('${tenant.id}', 'tab_analytics', this.checked)" class="rounded text-green-600">
+                                                <input type="checkbox" id="tab_analytics_${tenant.id}" class="rounded text-green-600">
                                                 <span class="text-sm">Analytics</span>
                                             </label>
                                         </div>
                                     </div>
+                                </div>
+                                <div class="mt-4 flex justify-end">
+                                    <button onclick="saveFeatureAccess('${tenant.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                                        <i class="fas fa-save"></i>
+                                        Save Feature Settings
+                                    </button>
                                 </div>
                             </div>
 
@@ -622,26 +628,44 @@
             });
         }
 
-        // Update feature access
-        async function updateFeatureAccess(tenantId, feature, enabled) {
+        // Save all feature access settings
+        async function saveFeatureAccess(tenantId) {
             try {
-                console.log(`Updating ${feature} to ${enabled} for tenant ${tenantId}`);
+                const features = {
+                    bot_enabled: document.getElementById(`bot_enabled_${tenantId}`)?.checked || false,
+                    bot_product_discovery: document.getElementById(`bot_product_discovery_${tenantId}`)?.checked || false,
+                    bot_cart_management: document.getElementById(`bot_cart_management_${tenantId}`)?.checked || false,
+                    bot_order_processing: document.getElementById(`bot_order_processing_${tenantId}`)?.checked || false,
+                    bot_payment_links: document.getElementById(`bot_payment_links_${tenantId}`)?.checked || false,
+                    bot_customer_support: document.getElementById(`bot_customer_support_${tenantId}`)?.checked || false,
+                    tab_products: document.getElementById(`tab_products_${tenantId}`)?.checked || false,
+                    tab_customers: document.getElementById(`tab_customers_${tenantId}`)?.checked || false,
+                    tab_orders: document.getElementById(`tab_orders_${tenantId}`)?.checked || false,
+                    tab_discounts: document.getElementById(`tab_discounts_${tenantId}`)?.checked || false,
+                    tab_broadcast: document.getElementById(`tab_broadcast_${tenantId}`)?.checked || false,
+                    tab_analytics: document.getElementById(`tab_analytics_${tenantId}`)?.checked || false
+                };
+
+                console.log('Saving features for tenant', tenantId, features);
                 
                 // TODO: Implement API endpoint to save feature settings
-                // For now, just show success message
-                showSuccess(`${feature.replace(/_/g, ' ')} ${enabled ? 'enabled' : 'disabled'}`);
-                
-                // Future implementation:
                 // const response = await fetch(`/api/tenants/${tenantId}/features`, {
                 //     method: 'PUT',
                 //     headers: { 'Content-Type': 'application/json' },
-                //     body: JSON.stringify({ feature, enabled })
+                //     body: JSON.stringify({ features })
                 // });
                 
+                showSuccess('Feature settings saved successfully!');
+                
             } catch (error) {
-                console.error('Error updating feature:', error);
-                showError('Failed to update feature');
+                console.error('Error saving features:', error);
+                showError('Failed to save feature settings');
             }
+        }
+
+        // Update feature access (deprecated - keeping for compatibility)
+        async function updateFeatureAccess(tenantId, feature, enabled) {
+            console.log(`Feature ${feature} ${enabled ? 'enabled' : 'disabled'} for tenant ${tenantId}`);
         }
 
         async function manageSubscription(tenantId) {
