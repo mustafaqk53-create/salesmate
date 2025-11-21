@@ -328,6 +328,50 @@ app.post('/api/admin/install-waha', async (req, res) => {
   }
 });
 
+// Restart Waha with API key
+app.post('/api/admin/restart-waha', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    
+    console.log('[WAHA] Restarting Waha with authentication...');
+    
+    const command = `
+      sudo docker stop waha 2>/dev/null || true
+      sudo docker rm waha 2>/dev/null || true
+      sudo docker run -d \
+        --name waha \
+        --restart unless-stopped \
+        -p 3000:3000 \
+        -v ~/waha-data:/app/.sessions \
+        -e WHATSAPP_HOOK_URL=http://localhost:8080/api/waha/webhook \
+        -e WHATSAPP_API_KEY=your-secret-key \
+        -e WHATSAPP_API_KEY_IN=header \
+        devlikeapro/waha:latest
+    `;
+    
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('[WAHA] Restart error:', error);
+        return res.status(500).json({ 
+          error: 'Restart failed', 
+          details: error.message 
+        });
+      }
+      
+      console.log('[WAHA] Restart output:', stdout);
+      res.json({ 
+        ok: true, 
+        message: 'Waha restarted successfully',
+        output: stdout 
+      });
+    });
+    
+  } catch (error) {
+    console.error('[WAHA] Restart endpoint error:', error);
+    res.status(500).json({ error: 'Failed to restart Waha' });
+  }
+});
+
 // Waha WhatsApp Bot Endpoints (24/7 Bot Support)
 const axios = require('axios');
 const WAHA_URL = process.env.WAHA_URL || 'http://localhost:3000';
