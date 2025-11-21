@@ -328,6 +328,220 @@ app.post('/api/admin/install-waha', async (req, res) => {
   }
 });
 
+// Waha WhatsApp Bot Endpoints (24/7 Bot Support)
+const axios = require('axios');
+const WAHA_URL = process.env.WAHA_URL || 'http://localhost:3000';
+
+// Start a new WhatsApp session for a tenant
+app.post('/api/waha/session/start', async (req, res) => {
+  try {
+    const { tenantId, sessionName } = req.body;
+    
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Missing tenantId' });
+    }
+
+    const session = sessionName || `tenant_${tenantId}`;
+    
+    console.log(`[WAHA] Starting session: ${session}`);
+    
+    const response = await axios.post(`${WAHA_URL}/api/sessions/start`, {
+      name: session,
+      config: {
+        proxy: null,
+        noweb: {
+          store: {
+            enabled: true,
+            fullSync: false
+          }
+        }
+      }
+    });
+
+    res.json({
+      ok: true,
+      session: session,
+      data: response.data
+    });
+
+  } catch (error) {
+    console.error('[WAHA] Session start error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to start session',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// Get QR code for scanning
+app.get('/api/waha/session/:sessionName/qr', async (req, res) => {
+  try {
+    const { sessionName } = req.params;
+    
+    console.log(`[WAHA] Getting QR code for: ${sessionName}`);
+    
+    const response = await axios.get(`${WAHA_URL}/api/${sessionName}/auth/qr`, {
+      responseType: 'json'
+    });
+
+    res.json({
+      ok: true,
+      qr: response.data
+    });
+
+  } catch (error) {
+    console.error('[WAHA] QR code error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to get QR code',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// Check session status
+app.get('/api/waha/session/:sessionName/status', async (req, res) => {
+  try {
+    const { sessionName } = req.params;
+    
+    const response = await axios.get(`${WAHA_URL}/api/${sessionName}/status`);
+
+    res.json({
+      ok: true,
+      status: response.data
+    });
+
+  } catch (error) {
+    console.error('[WAHA] Status check error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to get status',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// Send message via Waha
+app.post('/api/waha/send-message', async (req, res) => {
+  try {
+    const { sessionName, phone, message } = req.body;
+    
+    if (!sessionName || !phone || !message) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log(`[WAHA] Sending message via ${sessionName} to ${phone}`);
+    
+    const response = await axios.post(`${WAHA_URL}/api/sendText`, {
+      session: sessionName,
+      chatId: `${phone}@c.us`,
+      text: message
+    });
+
+    res.json({
+      ok: true,
+      messageId: response.data.id
+    });
+
+  } catch (error) {
+    console.error('[WAHA] Send message error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to send message',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// Webhook endpoint to receive messages from Waha
+app.post('/api/waha/webhook', async (req, res) => {
+  try {
+    const { event, session, payload } = req.body;
+    
+    console.log(`[WAHA] Webhook received: ${event} from ${session}`);
+
+    // Handle incoming message
+    if (event === 'message' && payload?.from && payload?.body) {
+      const from = payload.from.replace('@c.us', '');
+      const message = payload.body;
+      
+      // Get tenant ID from session name
+      const tenantId = session.replace('tenant_', '');
+      
+      console.log(`[WAHA] Processing message from ${from} for tenant ${tenantId}: ${message.substring(0, 50)}...`);
+      
+      // Format the request to match existing customer handler
+      const formattedReq = {
+        body: {
+          customer_phone: from,
+          customer_message: message,
+          tenant_id: tenantId
+        }
+      };
+
+      // Create response wrapper to capture AI reply
+      let aiReply = null;
+      const formattedRes = {
+        status: (code) => ({
+          json: (data) => {
+            if (data.reply) {
+              aiReply = data.reply;
+            }
+            return { status: code, data };
+          }
+        }),
+        json: (data) => {
+          if (data.reply) {
+            aiReply = data.reply;
+          }
+          return data;
+        }
+      };
+
+      // Process through existing customer handler
+      await customerHandler.handleCustomerTextMessage(formattedReq, formattedRes);
+
+      // Send AI reply back via Waha
+      if (aiReply) {
+        await axios.post(`${WAHA_URL}/api/sendText`, {
+          session: session,
+          chatId: payload.from,
+          text: aiReply
+        });
+        console.log(`[WAHA] AI reply sent to ${from}`);
+      }
+    }
+
+    res.json({ ok: true });
+
+  } catch (error) {
+    console.error('[WAHA] Webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Stop a session
+app.post('/api/waha/session/:sessionName/stop', async (req, res) => {
+  try {
+    const { sessionName } = req.params;
+    
+    console.log(`[WAHA] Stopping session: ${sessionName}`);
+    
+    const response = await axios.post(`${WAHA_URL}/api/sessions/stop`, {
+      name: sessionName
+    });
+
+    res.json({
+      ok: true,
+      data: response.data
+    });
+
+  } catch (error) {
+    console.error('[WAHA] Stop session error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to stop session',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
 // Agent Login API (MUST be before app.use('/api', apiRouter))
 app.post('/api/agent-login', async (req, res) => {
   try {
