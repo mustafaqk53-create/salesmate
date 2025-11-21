@@ -409,24 +409,66 @@ app.post('/api/waha/session/start', async (req, res) => {
     
     console.log(`[WAHA] Starting session: ${session} for tenant: ${tenantId}`);
     
-    const response = await wahaRequest('POST', '/api/sessions/start', {
-      name: session,
-      config: {
-        proxy: null,
-        noweb: {
-          store: {
-            enabled: true,
-            fullSync: false
-          }
-        }
+    // Check if session already exists
+    try {
+      const statusResponse = await wahaRequest('GET', `/api/sessions/${session}`);
+      const status = statusResponse.data.status;
+      
+      console.log(`[WAHA] Session already exists with status: ${status}`);
+      
+      // If session exists and is working or scanning, return success
+      if (status === 'WORKING' || status === 'SCAN_QR_CODE' || status === 'STARTING') {
+        return res.json({
+          ok: true,
+          session: session,
+          message: 'Session already running',
+          status: status,
+          data: statusResponse.data
+        });
       }
-    });
+      
+      // If session exists but failed/stopped, restart it
+      if (status === 'FAILED' || status === 'STOPPED') {
+        console.log(`[WAHA] Restarting ${status} session`);
+        await wahaRequest('POST', `/api/sessions/${session}/restart`);
+        
+        return res.json({
+          ok: true,
+          session: session,
+          message: 'Session restarted',
+          status: 'STARTING'
+        });
+      }
+      
+    } catch (statusError) {
+      // Session doesn't exist, create it
+      if (statusError.response?.status === 404) {
+        console.log(`[WAHA] Session not found, creating new one`);
+        
+        const response = await wahaRequest('POST', '/api/sessions/start', {
+          name: session,
+          config: {
+            proxy: null,
+            noweb: {
+              store: {
+                enabled: true,
+                fullSync: false
+              }
+            }
+          }
+        });
 
-    res.json({
-      ok: true,
-      session: session,
-      data: response.data
-    });
+        return res.json({
+          ok: true,
+          session: session,
+          message: 'Session created',
+          data: response.data
+        });
+      }
+      
+      // Other status check errors
+      throw statusError;
+    }
 
   } catch (error) {
     console.error('[WAHA] Session start error:', error.response?.data || error.message);
