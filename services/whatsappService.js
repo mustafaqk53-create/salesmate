@@ -1,8 +1,11 @@
 /**
  * @title WhatsApp Messaging Service
- * @description This service handles all interactions with the Maytapi API for sending messages.
+ * @description Multi-provider WhatsApp service (Desktop Agent, Waha, Maytapi)
+ * @updated Phase 2 - Abstracted Maytapi dependency
  */
 const fetch = require('node-fetch');
+const MessageProvider = require('./messageProvider');
+const { supabase } = require('./config');
 
 const MAYTAPI_PRODUCT_ID = process.env.MAYTAPI_PRODUCT_ID;
 const MAYTAPI_PHONE_ID = process.env.MAYTAPI_PHONE_ID;
@@ -10,32 +13,46 @@ const MAYTAPI_API_TOKEN = process.env.MAYTAPI_API_KEY;
 const API_URL = `https://api.maytapi.com/api/${MAYTAPI_PRODUCT_ID}/${MAYTAPI_PHONE_ID}/sendMessage`;
 
 /**
- * Sends a plain text message via the Maytapi API and returns the message ID.
+ * Sends a plain text message via MessageProvider (Desktop Agent, Waha, or Maytapi)
+ * @param {string} to - Phone number (with or without @c.us)
+ * @param {string} text - Message text
+ * @param {object} tenant - Tenant object (optional, for provider selection)
  */
-const sendMessage = async (to, text) => {
+const sendMessage = async (to, text, tenant = null) => {
+const sendMessage = async (to, text, tenant = null) => {
     try {
-        // ✅ FIX 1: Clean up currency symbols and ensure UTF-8
+        // Clean up text formatting
         let cleanText = text
-            .replace(/â‚¹/g, '₹')  // Fix corrupted rupee symbols
-            .replace(/Rs\./g, '₹')  // Standardize Rs. → ₹
-            .replace(/Rs\s+/g, '₹') // Standardize Rs  → ₹
-            .replace(/Ã¢â€šÂ¹/g, '₹') // Fix double-encoded symbols
-            .replace(/Ã°Å¸â€œÂ¦/g, '📦') // Fix package emoji
-            .replace(/Ã¢Å"â€¦/g, '✅') // Fix checkmark
-            .replace(/Ã°Å¸â€™Â³/g, '💳') // Fix payment emoji
+            .replace(/â‚¹/g, '₹')
+            .replace(/Rs\./g, '₹')
+            .replace(/Rs\s+/g, '₹')
+            .replace(/Ã¢â€šÂ¹/g, '₹')
+            .replace(/Ã°Å¸â€œÂ¦/g, '📦')
+            .replace(/Ã¢Å"â€¦/g, '✅')
+            .replace(/Ã°Å¸â€™Â³/g, '💳')
             .trim();
         
         console.log('[WHATSAPP_SEND] Cleaned text preview:', cleanText.substring(0, 100));
+
+        // If tenant provided, use MessageProvider (NEW)
+        if (tenant) {
+            const provider = new MessageProvider(tenant);
+            const result = await provider.sendMessage(to, cleanText);
+            return result.messageId || null;
+        }
+
+        // Fallback to Maytapi (LEGACY - for backward compatibility)
+        console.log('[WHATSAPP_SEND] Using Maytapi (legacy fallback)');
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json; charset=utf-8',  // ✅ Explicit UTF-8
+                'Content-Type': 'application/json; charset=utf-8',
                 'x-maytapi-key': MAYTAPI_API_TOKEN
             },
             body: JSON.stringify({
                 to_number: to,
                 type: 'text',
-                message: cleanText  // ✅ Use cleaned text
+                message: cleanText
             })
         });
         const responseBody = await response.json();
@@ -46,7 +63,7 @@ const sendMessage = async (to, text) => {
         console.log(`Text message sent to ${to}`);
         return responseBody.data?.message_id || null;
     } catch (error) {
-        console.error('Error sending message via Maytapi:', error.message);
+        console.error('Error sending message:', error.message);
         return null;
     }
 };
@@ -65,10 +82,23 @@ function formatCurrency(amount) {
 }
 
 /**
- * Sends a message with an image and a caption via the Maytapi API and returns the message ID.
+ * Sends a message with an image and a caption via MessageProvider or Maytapi
+ * @param {string} to - Phone number
+ * @param {string} caption - Image caption
+ * @param {string} mediaUrl - Image URL
+ * @param {object} tenant - Tenant object (optional)
  */
-const sendMessageWithImage = async (to, caption, mediaUrl) => {
+const sendMessageWithImage = async (to, caption, mediaUrl, tenant = null) => {
     try {
+        // If tenant provided, use MessageProvider
+        if (tenant) {
+            const provider = new MessageProvider(tenant);
+            const result = await provider.sendMessage(to, caption, mediaUrl);
+            return result.messageId || null;
+        }
+
+        // Fallback to Maytapi (LEGACY)
+        console.log('[WHATSAPP_SEND] Using Maytapi for image (legacy fallback)');
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -90,7 +120,7 @@ const sendMessageWithImage = async (to, caption, mediaUrl) => {
         console.log(`Image message sent to ${to}`);
         return responseBody.data?.message_id || null;
     } catch (error) {
-        console.error('Error sending image message via Maytapi:', error.message);
+        console.error('Error sending image message:', error.message);
         return null;
     }
 };
@@ -143,5 +173,6 @@ module.exports = {
     sendMessage,
     sendMessageWithImage,
     sendDocument,
-    formatCurrency  // ✅ Add this export
+    formatCurrency,
+    MessageProvider  // Export for direct use
 };
