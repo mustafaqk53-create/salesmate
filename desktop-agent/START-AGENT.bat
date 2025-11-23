@@ -24,7 +24,7 @@ echo ========================================
 echo.
 
 :: Run the agent (keeps window open)
-sak-whatsapp-agent-windows.exe
+node index.js
 
 echo.
 echo.
