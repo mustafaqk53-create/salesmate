@@ -283,16 +283,11 @@ async function initializeWhatsApp() {
         dataPath: './.wwebjs_auth'
     }),
     puppeteer: {
-        headless: true,
+        headless: true,  // Try headless mode to avoid browser issues
         executablePath: executablePath,
         args: [
             '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
+            '--disable-setuid-sandbox'
         ]
     }
 });
@@ -464,7 +459,13 @@ client.on('message_create', async (message) => {
 
 // Error handling
 process.on('unhandledRejection', (error) => {
-    console.error('❌ Unhandled rejection:', error);
+    console.error('❌ Unhandled rejection:', error.message || error);
+    console.error('💡 Tip: Try deleting .wwebjs_auth folder and restart');
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught exception:', error.message || error);
+    console.error('💡 Tip: Restart the agent');
 });
 
 process.on('SIGINT', async () => {
@@ -475,7 +476,8 @@ process.on('SIGINT', async () => {
         await axios.post(`${CLOUD_SERVER_URL}/api/desktop-agent/disconnect`, {
             tenantId: TENANT_ID
         }, {
-            headers: { 'x-api-key': API_KEY }
+            headers: { 'x-api-key': API_KEY },
+            timeout: 5000
         });
     } catch (error) {
         // Silent fail
@@ -488,5 +490,13 @@ process.on('SIGINT', async () => {
 });
 
 // Initialize WhatsApp client
-client.initialize();
+console.log('🔄 Starting WhatsApp client initialization...');
+client.initialize().catch(err => {
+    console.error('❌ Failed to initialize WhatsApp client:', err.message);
+    console.error('💡 Common fixes:');
+    console.error('   1. Delete .wwebjs_auth and .wwebjs_cache folders');
+    console.error('   2. Update Chrome browser to latest version');
+    console.error('   3. Restart your computer');
+    process.exit(1);
+});
 }
