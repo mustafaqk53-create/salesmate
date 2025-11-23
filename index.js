@@ -245,43 +245,46 @@ app.post('/api/desktop-agent/process-message', async (req, res) => {
       });
     }
 
-    // Format the request to match the customerHandler.handleCustomer format
-    const formattedReq = {
-      message: {
-        from: from,
-        text: {
-          body: message
-        }
-      },
-      tenant: tenant
+    // Temporarily override sendMessage to capture the reply
+    const whatsappService = require('./services/whatsappService');
+    const originalSendMessage = whatsappService.sendMessage;
+    let capturedReply = null;
+    
+    whatsappService.sendMessage = async (to, text) => {
+      console.log('[DESKTOP_AGENT] Captured reply:', text.substring(0, 100));
+      capturedReply = text;
+      return 'desktop_agent_' + Date.now(); // Return fake message ID
     };
 
-    // Create a response wrapper to capture the AI reply
-    let aiReply = null;
-    const formattedRes = {
-      status: (code) => ({
-        json: (data) => {
-          if (data.reply) {
-            aiReply = data.reply;
+    try {
+      // Format the request to match the customerHandler.handleCustomer format
+      const formattedReq = {
+        message: {
+          from: from,
+          text: {
+            body: message
           }
-          return { status: code, data };
-        }
-      }),
-      json: (data) => {
-        if (data.reply) {
-          aiReply = data.reply;
-        }
-        return data;
-      }
-    };
+        },
+        tenant: tenant
+      };
 
-    // Process through existing customer handler
-    await customerHandler.handleCustomer(formattedReq, formattedRes);
+      // Create a minimal response object
+      const formattedRes = {
+        status: (code) => ({ json: (data) => data }),
+        json: (data) => data
+      };
+
+      // Process through existing customer handler
+      await customerHandler.handleCustomer(formattedReq, formattedRes);
+    } finally {
+      // Restore original sendMessage
+      whatsappService.sendMessage = originalSendMessage;
+    }
 
     // Return AI response to desktop agent
     res.json({
       ok: true,
-      reply: aiReply || 'Message received',
+      reply: capturedReply || 'Message received',
       messageId,
       timestamp: new Date().toISOString()
     });
