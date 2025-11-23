@@ -2866,8 +2866,8 @@
             document.getElementById('btnConnect').disabled = true;
             document.getElementById('btnConnect').innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connecting...';
 
-            // Use Waha session API - create session name from tenant ID
-            const sessionName = `tenant_${tenantId.substring(0, 8)}`;
+            // Waha Core only supports 'default' session
+            const sessionName = 'default';
             
             const response = await fetch('/api/waha/session/start', {
                 method: 'POST',
@@ -2915,7 +2915,8 @@
             document.getElementById('btnDisconnect').disabled = true;
             document.getElementById('btnDisconnect').innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Disconnecting...';
 
-            const sessionName = `tenant_${tenantId.substring(0, 8)}`;
+            // Waha Core only supports 'default' session
+            const sessionName = 'default';
             
             const response = await fetch(`/api/waha/session/${sessionName}/stop`, {
                 method: 'POST',
@@ -2945,7 +2946,8 @@
         if (!tenantId) return;
 
         try {
-            const sessionName = `tenant_${tenantId.substring(0, 8)}`;
+            // Waha Core only supports 'default' session
+            const sessionName = 'default';
             
             const response = await fetch(`/api/waha/session/${sessionName}/status`);
 
@@ -3007,7 +3009,7 @@
                             <i class="fas ${statusIcon} text-${statusColor}-500"></i>
                             <span class="font-semibold text-gray-800">${statusText}</span>
                         </div>
-                        <p class="text-sm text-gray-500 mt-1">Waha Cloud Bot - Session: ${sessionName}</p>
+                        <p class="text-sm text-gray-500 mt-1">Waha Cloud Bot - Session: default</p>
                     </div>
                 </div>
             `;
@@ -3017,10 +3019,11 @@
                 const detailsDiv = document.getElementById('connectionInfo');
                 if (detailsDiv) {
                     detailsDiv.innerHTML = `
-                        <p><strong>Session Name:</strong> ${sessionName}</p>
+                        <p><strong>Session Name:</strong> default</p>
                         <p><strong>Status:</strong> ${wahaStatus}</p>
                         <p><strong>Provider:</strong> Waha Cloud Bot (24/7)</p>
                         <p><strong>Connection:</strong> Active and Ready</p>
+                        <p class="text-sm text-gray-500 mt-2"><em>Note: Waha Core supports one WhatsApp account (shared across all tenants)</em></p>
                     `;
                 }
             }
@@ -3049,10 +3052,9 @@
     }
 
     async function pollForQRCode(sessionName) {
+        // Waha Core only supports 'default' session
         if (!sessionName) {
-            const tenantId = state.session?.tenantId;
-            if (!tenantId) return;
-            sessionName = `tenant_${tenantId.substring(0, 8)}`;
+            sessionName = 'default';
         }
 
         try {
