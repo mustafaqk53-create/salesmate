@@ -5,13 +5,22 @@ color 0B
 :: Change to the directory where this script is located
 cd /d "%~dp0"
 
+:: Clean old sessions to force fresh QR code
+if exist ".wwebjs_auth" (
+    echo Cleaning old session...
+    rmdir /s /q ".wwebjs_auth" 2>nul
+)
+if exist ".wwebjs_cache" (
+    rmdir /s /q ".wwebjs_cache" 2>nul
+)
+
 :: Clear screen and start agent
 cls
 echo ========================================
-echo   SAK WhatsApp Agent
+echo   SAK WhatsApp Agent - Fresh Start
 echo ========================================
 echo.
-echo Starting agent...
+echo Starting agent with clean session...
 echo.
 echo If this is your first time:
 echo - Browser will open for login/registration
@@ -24,7 +33,7 @@ echo ========================================
 echo.
 
 :: Run the agent (keeps window open)
-node index.js
+sak-whatsapp-agent-windows.exe
 
 echo.
 echo.

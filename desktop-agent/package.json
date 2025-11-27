@@ -1,6 +1,6 @@
 {
   "name": "sak-whatsapp-desktop-agent",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "Desktop agent for WhatsApp AI Sales Assistant - Hybrid Architecture",
   "main": "index.js",
   "bin": "index.js",
@@ -10,12 +10,16 @@
     ],
     "targets": [
       "node18-win-x64"
-    ]
+    ],
+    "outputPath": "dist"
   },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "build": "pkg . --output ../public/download/sak-whatsapp-agent-windows.exe"
+    "build": "pkg . --output ../public/download/sak-whatsapp-agent-windows.exe",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "keywords": [
     "whatsapp",

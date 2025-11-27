@@ -15,7 +15,7 @@ const { exec } = require('child_process');
 require('dotenv').config();
 
 // Configuration
-const CLOUD_SERVER_URL = process.env.CLOUD_SERVER_URL || 'http://13.62.57.240:8080';
+const CLOUD_SERVER_URL = process.env.CLOUD_SERVER_URL || 'http://43.205.192.171:8080';
 const LOCAL_PORT = process.env.LOCAL_PORT || 3001;
 const WHATSAPP_PHONE = process.env.WHATSAPP_PHONE || '971507055253'; // Your WhatsApp number
 let TENANT_ID = process.env.TENANT_ID || null; // Read from .env file first
@@ -277,7 +277,52 @@ async function initializeWhatsApp() {
     
     console.log('\n🔄 Initializing WhatsApp client...');
     
+    // Session cleanup - check for corrupted sessions
+    const fs = require('fs');
+    const path = require('path');
+    const sessionDir = '.wwebjs_auth';
+    const cacheDir = '.wwebjs_cache';
+    
+    // Check for lockfile (indicates crashed session)
+    const lockfile = path.join(sessionDir, 'session', 'lockfile');
+    if (fs.existsSync(lockfile)) {
+        console.log('⚠️  Found crashed session lockfile - cleaning...');
+        try {
+            fs.unlinkSync(lockfile);
+            console.log('✅ Lockfile removed');
+        } catch (err) {
+            console.log('⚠️  Could not remove lockfile:', err.message);
+        }
+    }
+    
+    // Check if session exists but is corrupted (no session-* file inside)
+    const sessionPath = path.join(sessionDir, 'session');
+    if (fs.existsSync(sessionPath)) {
+        try {
+            const files = fs.readdirSync(sessionPath);
+            const hasSessionFile = files.some(f => f.startsWith('session-') && !f.includes('lockfile'));
+            
+            if (!hasSessionFile && files.length > 0) {
+                console.log('⚠️  Detected corrupted session - deleting...');
+                fs.rmSync(sessionDir, { recursive: true, force: true });
+                console.log('✅ Corrupted session deleted - will show QR code');
+            }
+        } catch (err) {
+            console.log('⚠️  Could not check session:', err.message);
+        }
+    }
+    
+    // Clean cache to save space
+    if (fs.existsSync(cacheDir)) {
+        try {
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+        } catch (err) {
+            // Ignore cache errors
+        }
+    }
+    
     // WhatsApp Client with local session storage
+    console.log('📦 Creating WhatsApp client...');
     const client = new Client({
     authStrategy: new LocalAuth({
         dataPath: './.wwebjs_auth'
@@ -296,6 +341,7 @@ async function initializeWhatsApp() {
         ]
     }
 });
+console.log('✅ WhatsApp client created');
 
 // Store client globally for broadcast access
 global.whatsappClient = client;
@@ -303,6 +349,27 @@ global.whatsappClient = client;
 console.log('🚀 Starting Desktop Agent...');
 console.log(`📡 Cloud Server: ${CLOUD_SERVER_URL}`);
 console.log(`👤 Tenant ID: ${TENANT_ID}`);
+console.log(`🏥 Health endpoint: http://localhost:${LOCAL_PORT}/health`);
+console.log('\n⏳ Initializing WhatsApp client...');
+
+// Loading Event
+client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ Loading: ${percent}% - ${message}`);
+});
+
+// Authentication events
+client.on('auth_failure', msg => {
+    console.error('❌ Authentication failed:', msg);
+});
+
+client.on('change_state', state => {
+    console.log('🔄 State changed:', state);
+});
+
+// Disconnection events
+client.on('disconnected', (reason) => {
+    console.log('⚠️  Disconnected:', reason);
+});
 
 // QR Code Event
 client.on('qr', (qr) => {
@@ -314,6 +381,11 @@ client.on('qr', (qr) => {
         message: 'Scan QR code to connect',
         sound: true
     });
+});
+
+// Remote Session Saved Event
+client.on('remote_session_saved', () => {
+    console.log('💾 Session saved successfully');
 });
 
 // Ready Event
@@ -402,6 +474,8 @@ client.on('message', async (message) => {
         }
         
         console.log(`\n📨 Message from ${from}: ${body}`);
+        console.log(`📤 Sending to cloud server: ${CLOUD_SERVER_URL}/api/desktop-agent/process-message`);
+        console.log(`🔑 Tenant ID: ${TENANT_ID}`);
         
         // Send to cloud server for AI processing
         const response = await axios.post(
@@ -415,10 +489,11 @@ client.on('message', async (message) => {
             },
             {
                 headers: { 'x-api-key': API_KEY },
-                timeout: 30000 // 30 second timeout
+                timeout: 60000 // Increased to 60 seconds
             }
         );
         
+        console.log(`📥 Received response from cloud:`, response.data);
         const aiResponse = response.data.reply;
         
         if (aiResponse) {
@@ -443,7 +518,17 @@ client.on('message', async (message) => {
         }
         
     } catch (error) {
-        console.error('❌ Error processing message:', error.message);
+        console.error('❌ Error processing message:');
+        console.error('  Message:', error.message);
+        if (error.response) {
+            console.error('  Status:', error.response.status);
+            console.error('  Data:', JSON.stringify(error.response.data, null, 2));
+        } else if (error.code === 'ECONNABORTED') {
+            console.error('  Reason: Request timed out (exceeded 60 seconds)');
+        } else if (error.code) {
+            console.error('  Code:', error.code);
+        }
+        console.error('  Stack:', error.stack);
         
         // Fallback response if cloud is down
         try {
@@ -488,5 +573,33 @@ process.on('SIGINT', async () => {
 });
 
 // Initialize WhatsApp client
-client.initialize();
+console.log('⏳ Initializing WhatsApp client...');
+
+// Set a hard timeout for initialization (90 seconds)
+const initTimeout = setTimeout(() => {
+    console.log('\n⚠️  Initialization timeout - forcing restart...');
+    console.log('💡 If this happens repeatedly, delete .wwebjs_auth folder');
+    process.exit(1);
+}, 90000); // 90 seconds - hard kill
+
+// Set a warning timeout (30 seconds)
+const warningTimeout = setTimeout(() => {
+    console.log('\n⏳ Still initializing... (this can take 1-2 minutes for first time)');
+    console.log('💡 Make sure you have a stable internet connection');
+}, 30000);
+
+client.initialize().then(() => {
+    clearTimeout(initTimeout);
+    clearTimeout(warningTimeout);
+    console.log('✅ WhatsApp client initialized successfully');
+}).catch(err => {
+    clearTimeout(initTimeout);
+    clearTimeout(warningTimeout);
+    console.error('\n❌ Failed to initialize WhatsApp client:', err.message);
+    console.error('💡 Try these steps:');
+    console.error('   1. Check your internet connection');
+    console.error('   2. Delete .wwebjs_auth and .wwebjs_cache folders');
+    console.error('   3. Restart the agent');
+    process.exit(1);
+});
 }

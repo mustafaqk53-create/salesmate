@@ -267,8 +267,20 @@ app.post('/api/desktop-agent/process-message', async (req, res) => {
         json: (data) => data
       };
 
-      // Process through existing customer handler
-      await customerHandler.handleCustomer(formattedReq, formattedRes);
+      // Process with timeout protection (45 seconds)
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          console.log('[DESKTOP_AGENT] Processing timeout - using fallback response');
+          resolve(null);
+        }, 45000);
+      });
+
+      // Race between processing and timeout
+      await Promise.race([
+        customerHandler.handleCustomer(formattedReq, formattedRes),
+        timeoutPromise
+      ]);
+
     } finally {
       // Disable desktop agent mode
       global.desktopAgentMode = false;
@@ -279,7 +291,7 @@ app.post('/api/desktop-agent/process-message', async (req, res) => {
     // Return AI response to desktop agent
     res.json({
       ok: true,
-      reply: capturedReply || 'Message received',
+      reply: capturedReply || 'Thank you for your message. We are processing it.',
       messageId,
       timestamp: new Date().toISOString()
     });

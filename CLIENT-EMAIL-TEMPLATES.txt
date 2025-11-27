@@ -1,0 +1,321 @@
+================================================================================
+EMAIL TEMPLATES FOR CLIENT DISTRIBUTION
+================================================================================
+
+----------------------------
+TEMPLATE 1: NEW CLIENT SETUP
+----------------------------
+
+Subject: Your SAK WhatsApp AI Agent - Ready to Install
+
+Hi [Client Name],
+
+Welcome to SAK WhatsApp AI! Your desktop agent is ready for installation.
+
+📦 DOWNLOAD YOUR AGENT:
+[Attach: SAK-WhatsApp-Agent-Windows-v1.0.0.zip]
+
+🔑 YOUR CREDENTIALS:
+Tenant ID: [INSERT_CLIENT_TENANT_ID]
+API Key: [INSERT_CLIENT_API_KEY]
+
+Dashboard Login: http://13.62.57.240:8080
+Username: [CLIENT_EMAIL]
+Password: [CLIENT_PASSWORD]
+
+⚡ QUICK SETUP (2 Minutes):
+1. Extract the ZIP file to a folder
+2. Double-click "SETUP.bat"
+3. Enter your credentials above when prompted
+4. Scan QR code with WhatsApp
+5. Done! Your AI is live 24/7
+
+📖 Full instructions are included in README.txt inside the package.
+
+💡 TIPS:
+- Keep the agent window open (minimize if needed)
+- Your computer must stay on for the AI to work
+- Check your dashboard for real-time analytics
+
+❓ NEED HELP?
+Email: support@sakwhatsapp.com
+WhatsApp: +971 50 705 5253
+Phone: [YOUR_PHONE]
+
+We're here to help you succeed!
+
+Best regards,
+[Your Name]
+[Your Company]
+
+----------------------------
+TEMPLATE 2: UPDATE NOTIFICATION
+----------------------------
+
+Subject: New Update Available - SAK WhatsApp AI Agent v1.1.0
+
+Hi [Client Name],
+
+We've released an exciting update to your WhatsApp AI agent!
+
+🆕 WHAT'S NEW:
+- Faster message processing
+- Improved QR code scanning
+- Better connection stability
+- Bug fixes and performance improvements
+
+📦 DOWNLOAD UPDATE:
+[Attach: SAK-WhatsApp-Agent-Windows-v1.1.0.zip]
+
+🔄 HOW TO UPDATE:
+1. Close your current agent (close the window)
+2. BACKUP your .env file (important!)
+3. Extract the new version to a new folder
+4. COPY your old .env file to the new folder
+5. Run START-AGENT.bat
+
+Your WhatsApp will reconnect automatically - no QR scan needed!
+
+⚠️ IMPORTANT:
+- Don't delete your old .env file
+- Your settings and WhatsApp session are preserved
+
+Questions? Reply to this email or contact support.
+
+Best regards,
+[Your Name]
+
+----------------------------
+TEMPLATE 3: TROUBLESHOOTING HELP
+----------------------------
+
+Subject: Troubleshooting Your SAK WhatsApp AI Agent
+
+Hi [Client Name],
+
+I understand you're experiencing issues with your agent. Let's get you back up and running!
+
+🔧 COMMON FIXES:
+
+Issue: QR code won't appear
+Fix:
+1. Check internet connection
+2. Open .env file and verify your Tenant ID
+3. Make sure you saved the .env file after editing
+4. Try running START-AGENT.bat again
+
+Issue: "Chrome not found" error
+Fix:
+1. Install Google Chrome: https://www.google.com/chrome/
+2. Or Microsoft Edge: https://www.microsoft.com/edge
+3. Restart the agent after installing
+
+Issue: WhatsApp won't scan QR code
+Fix:
+1. Make QR code bigger on screen
+2. Increase screen brightness
+3. Update WhatsApp app on your phone
+4. Hold phone steady while scanning
+
+Issue: Agent keeps disconnecting
+Fix:
+1. Check internet stability
+2. Disable computer sleep mode
+3. Add agent to antivirus exceptions
+4. Restart your router
+
+📞 STILL NEED HELP?
+Let's schedule a quick call to resolve this together.
+
+Reply with your preferred time:
+- Tomorrow 10 AM - 12 PM
+- Tomorrow 2 PM - 4 PM
+- Other: [Specify]
+
+We'll get this working for you!
+
+Best regards,
+[Your Name]
+
+----------------------------
+TEMPLATE 4: WELCOME + TRAINING
+----------------------------
+
+Subject: Welcome to SAK WhatsApp AI - Let's Get Started!
+
+Hi [Client Name],
+
+Congratulations on setting up your WhatsApp AI! 🎉
+
+✅ YOUR AGENT STATUS: Connected and running
+
+Now let's make the most of your new AI assistant:
+
+🎓 TRAINING SESSION:
+I'd like to schedule a 30-minute onboarding call to show you:
+- How to use the dashboard
+- Managing products and inventory
+- Viewing analytics and reports
+- Sending broadcast messages
+- Best practices for maximum results
+
+Available times:
+[ ] Monday 2 PM
+[ ] Tuesday 10 AM
+[ ] Wednesday 3 PM
+[ ] Other: ______________
+
+Reply with your preferred time, or pick a slot here:
+[Calendar link if you use Calendly]
+
+📊 QUICK WINS:
+While you wait, try these:
+1. Login to dashboard: http://13.62.57.240:8080
+2. Add your products (Settings → Products)
+3. Customize AI responses (Settings → AI Configuration)
+4. Send a test message to your WhatsApp number
+
+💡 PRO TIP:
+The more products you add, the smarter your AI becomes at recommendations!
+
+Looking forward to our call!
+
+Best regards,
+[Your Name]
+
+----------------------------
+TEMPLATE 5: SUBSCRIPTION RENEWAL
+----------------------------
+
+Subject: Your SAK WhatsApp AI Subscription - Renewal Reminder
+
+Hi [Client Name],
+
+Your SAK WhatsApp AI subscription is up for renewal soon.
+
+📅 Renewal Date: [DATE]
+💰 Amount: [AMOUNT]
+📦 Package: [PACKAGE_NAME]
+
+✨ WHAT YOU'VE ACHIEVED:
+- [X] Messages processed this month
+- [X] Orders taken automatically
+- [X] Average response time: [X] seconds
+- [X]% customer satisfaction rate
+
+🎁 RENEW NOW AND GET:
+- Latest agent version
+- Priority support
+- New features access
+- [Bonus offer if any]
+
+💳 RENEW YOUR SUBSCRIPTION:
+[Payment link]
+
+Or reply to this email to discuss your plan.
+
+Questions about pricing or features? Let's chat!
+
+Thank you for being a valued client!
+
+Best regards,
+[Your Name]
+
+----------------------------
+TEMPLATE 6: FEEDBACK REQUEST
+----------------------------
+
+Subject: How's Your SAK WhatsApp AI Working for You?
+
+Hi [Client Name],
+
+You've been using SAK WhatsApp AI for [X] weeks now, and I'd love to hear about your experience!
+
+❓ QUICK SURVEY (2 Minutes):
+1. How satisfied are you with the agent? (1-10): ___
+2. Has it improved your customer service? Yes / No
+3. What feature do you use most?: ___
+4. What would you like to see improved?: ___
+
+🎁 BONUS:
+Complete this survey and get [incentive - free month, discount, feature unlock]
+
+📣 SUCCESS STORY:
+If you're happy with the results, we'd love to feature your success story (with your permission). We can even share it to help promote your business!
+
+Reply to this email with your feedback. I read every response personally.
+
+Thank you for your trust in SAK WhatsApp AI!
+
+Best regards,
+[Your Name]
+
+----------------------------
+TEMPLATE 7: UPSELL - PREMIUM FEATURES
+----------------------------
+
+Subject: Unlock Premium Features for Your SAK WhatsApp AI
+
+Hi [Client Name],
+
+Great news! Your agent is performing well. Want to take it to the next level?
+
+🚀 PREMIUM FEATURES AVAILABLE:
+
+📊 Advanced Analytics
+- Customer insights
+- Sales forecasting
+- Behavior tracking
+- Custom reports
+
+💬 Multi-Agent Support
+- Run multiple WhatsApp numbers
+- Centralized dashboard
+- Team collaboration
+
+🎯 Advanced Broadcasts
+- Schedule campaigns
+- A/B testing
+- Personalized messages
+- Conversion tracking
+
+🤖 AI Enhancements
+- Custom training
+- Voice message support
+- Multi-language support
+- Sentiment analysis
+
+💰 SPECIAL OFFER:
+Upgrade this week and get 20% off first 3 months!
+
+Regular: $[X]/month
+Your Price: $[Y]/month
+
+📞 SCHEDULE A DEMO:
+Let me show you these features in action.
+Book a slot: [Calendar link]
+
+Or reply "YES" and I'll call you within 24 hours.
+
+Ready to scale up?
+
+Best regards,
+[Your Name]
+
+================================================================================
+CUSTOMIZATION NOTES:
+================================================================================
+
+Replace these placeholders in templates above:
+- [Client Name] - Client's first name
+- [INSERT_CLIENT_TENANT_ID] - From dashboard
+- [INSERT_CLIENT_API_KEY] - From dashboard
+- [CLIENT_EMAIL] - Their login email
+- [CLIENT_PASSWORD] - Their dashboard password
+- [Your Name] - Your name
+- [Your Company] - Your business name
+- [DATE] - Specific dates
+- [AMOUNT] - Pricing amounts
+- [X] - Statistics from dashboard
+
+================================================================================
