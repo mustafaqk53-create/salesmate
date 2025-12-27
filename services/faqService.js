@@ -136,14 +136,28 @@ const findFaqResponse = async (tenantId, userQuery) => {
         // 2. If no common FAQ matches, check tenant-specific FAQs using vector similarity
         const queryEmbedding = await createEmbedding(userQuery);
 
-        const { data, error } = await supabase.rpc('match_faqs', {
-            tenant_id_param: tenantId,
-            query_embedding: queryEmbedding,
-            match_threshold: 0.8, // This is a confidence threshold, adjust as needed.
-            match_count: 1 // We only want the single best match.
-        });
-
-        if (error) throw error;
+        let data = null;
+        try {
+            const { data: rpcData, error } = await supabase.rpc('match_faqs', {
+                tenant_id_param: tenantId,
+                query_embedding: queryEmbedding,
+                match_threshold: 0.8,
+                match_count: 1
+            });
+            if (error) throw error;
+            data = rpcData;
+        } catch (rpcErr) {
+            // Local SQLite mode: fall back to basic text matching.
+            const needle = String(userQuery || '').trim().slice(0, 120);
+            const { data: rows, error: qErr } = await supabase
+                .from('tenant_faqs')
+                .select('question, answer')
+                .eq('tenant_id', tenantId)
+                .or(`question.ilike.%${needle}%,answer.ilike.%${needle}%`)
+                .limit(1);
+            if (qErr) throw qErr;
+            data = rows;
+        }
 
         // 3. If a good match is found, return its answer.
         if (data && data.length > 0) {

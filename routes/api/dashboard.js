@@ -2,7 +2,15 @@
 // It must only query the 'conversations' table and never construct objects from customer_profiles or merge in a way that overwrites the id.
 const express = require('express');
 const router = express.Router();
-const { supabase } = require('../../services/config');
+const { supabase, USE_LOCAL_DB } = require('../../services/config');
+const { sendMessage } = require('../../services/whatsappService');
+const multer = require('multer');
+const DocumentIngestionService = require('../../services/documentIngestionService');
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024 } // 15MB
+});
 
 /**
  * GET /api/dashboard/verify-token
@@ -171,6 +179,114 @@ router.post('/verify-token', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Internal server error'
+        });
+    }
+});
+
+/**
+ * GET /api/dashboard/documents/:tenantId
+ * List tenant knowledge documents
+ */
+router.get('/documents/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+
+        const { data: documents, error } = await supabase
+            .from('tenant_documents')
+            .select('id, tenant_id, filename, original_name, mime_type, size_bytes, created_at')
+            .eq('tenant_id', tenantId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            documents: documents || []
+        });
+    } catch (error) {
+        console.error('[DASHBOARD_DOCS] List error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to load documents'
+        });
+    }
+});
+
+/**
+ * POST /api/dashboard/documents/:tenantId/upload
+ * Upload a document, extract text, and store it for tenant knowledge
+ */
+router.post('/documents/:tenantId/upload', upload.single('file'), async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'No file uploaded'
+            });
+        }
+
+        const originalName = req.file.originalname || 'document';
+        const mimeType = req.file.mimetype || 'application/octet-stream';
+        const sizeBytes = req.file.size || req.file.buffer?.length || null;
+
+        const { text: extractedText } = await DocumentIngestionService.extractTextFromUpload({
+            buffer: req.file.buffer,
+            originalName,
+            mimeType
+        });
+
+        const { data: inserted, error } = await supabase
+            .from('tenant_documents')
+            .insert({
+                tenant_id: tenantId,
+                filename: originalName,
+                original_name: originalName,
+                mime_type: mimeType,
+                size_bytes: sizeBytes,
+                extracted_text: extractedText
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            document: inserted
+        });
+    } catch (error) {
+        console.error('[DASHBOARD_DOCS] Upload error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to upload document'
+        });
+    }
+});
+
+/**
+ * DELETE /api/dashboard/documents/:tenantId/:documentId
+ * Delete a tenant knowledge document
+ */
+router.delete('/documents/:tenantId/:documentId', async (req, res) => {
+    try {
+        const { tenantId, documentId } = req.params;
+
+        const { error } = await supabase
+            .from('tenant_documents')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('id', documentId);
+
+        if (error) throw error;
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[DASHBOARD_DOCS] Delete error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete document'
         });
     }
 });
@@ -1136,17 +1252,26 @@ router.get('/stats/:tenantId', async (req, res) => {
         }
 
         // Safe read-only queries - no impact on WhatsApp system
-        const [
-            { count: totalOrders },
-            conversationsData,
-            { count: totalProducts },
-            ordersData
-        ] = await Promise.all([
-            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+        // NOTE: In local SQLite mode, the Supabase-like wrapper may not return `count` for `{ head: true }` queries.
+        // We compute robust counts with a fallback to `data.length`.
+        const [ordersCountRes, conversationsData, productsCountRes, ordersData] = await Promise.all([
+            supabase.from('orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId),
             supabase.from('conversations').select('id').eq('tenant_id', tenantId),
-            supabase.from('products').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+            supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId),
             supabase.from('orders').select('total_amount').eq('tenant_id', tenantId)
         ]);
+
+        let totalOrders = ordersCountRes?.count;
+        if (typeof totalOrders !== 'number') {
+            const ordersRowsRes = await supabase.from('orders').select('id').eq('tenant_id', tenantId);
+            totalOrders = Array.isArray(ordersRowsRes?.data) ? ordersRowsRes.data.length : 0;
+        }
+
+        let totalProducts = productsCountRes?.count;
+        if (typeof totalProducts !== 'number') {
+            const productsRowsRes = await supabase.from('products').select('id').eq('tenant_id', tenantId);
+            totalProducts = Array.isArray(productsRowsRes?.data) ? productsRowsRes.data.length : 0;
+        }
 
         // Get conversation IDs for this tenant
         const conversationIds = conversationsData.data?.map(c => c.id) || [];
@@ -1155,10 +1280,20 @@ router.get('/stats/:tenantId', async (req, res) => {
         // Count messages for these conversations
         let totalMessages = 0;
         if (conversationIds.length > 0) {
-            const { count: messagesCount } = await supabase
+            const messagesCountRes = await supabase
                 .from('messages')
-                .select('*', { count: 'exact', head: true })
+                .select('id', { count: 'exact', head: true })
                 .in('conversation_id', conversationIds);
+
+            let messagesCount = messagesCountRes?.count;
+            if (typeof messagesCount !== 'number') {
+                const messagesRowsRes = await supabase
+                    .from('messages')
+                    .select('id')
+                    .in('conversation_id', conversationIds);
+                messagesCount = Array.isArray(messagesRowsRes?.data) ? messagesRowsRes.data.length : 0;
+            }
+
             totalMessages = messagesCount || 0;
         }
 
@@ -1197,9 +1332,13 @@ router.get('/orders/:tenantId', async (req, res) => {
         const offset = Math.max(0, parseInt(req.query.offset || '0', 10));
     const { customer, status, minDate, maxDate, minAmount, maxAmount, product } = req.query;
 
-        let query = supabase
-            .from('orders')
-            .select(`
+        // In local SQLite mode, schemas can vary; selecting missing columns (e.g. original_amount)
+        // causes a hard failure at prepare-time. Use SELECT * to avoid column drift.
+        let query = supabase.from('orders');
+        if (USE_LOCAL_DB) {
+            query = query.select('*');
+        } else {
+            query = query.select(`
                 id,
                 tenant_id,
                 total_amount,
@@ -1223,8 +1362,10 @@ router.get('/orders/:tenantId', async (req, res) => {
                 conversation_id,
                 status,
                 order_status
-            `)
-            .eq('tenant_id', tenantId);
+            `);
+        }
+
+        query = query.eq('tenant_id', tenantId);
 
         if (status) query = query.eq('order_status', status);
         if (minDate) query = query.gte('created_at', minDate);
@@ -1375,6 +1516,17 @@ router.get('/orders/:tenantId', async (req, res) => {
         const enriched = enrichedOrders.map(o => {
             const phone = convMap[o.conversation_id]?.end_user_phone;
             const company = phone ? companyMap[phone] : null;
+
+            const subtotalAmount = Number(o.subtotal_amount || 0);
+            const discountAmount = Number(o.discount_amount || 0);
+            const totalAmount = Number(o.total_amount || 0);
+            // Some schemas do not have orders.original_amount; derive a best-effort fallback.
+            const originalAmountDerived =
+                Number(o.original_amount || 0) ||
+                (subtotalAmount + discountAmount) ||
+                subtotalAmount ||
+                totalAmount;
+
             return {
                 id: o.id,
                 tenant_id: o.tenant_id,
@@ -1388,10 +1540,10 @@ router.get('/orders/:tenantId', async (req, res) => {
                 shippingAddress: o.shipping_address || null,
                 zoho_invoice_id: o.zoho_invoice_id || null,
                 // Normalized pricing keys (frontend expects subtotal/shipping/gst)
-                subtotal: Number(o.subtotal_amount || o.original_amount || 0),
-                discount: Number(o.discount_amount || 0),
-                originalAmount: Number(o.original_amount || 0),
-                total: Number(o.total_amount || 0),
+                subtotal: subtotalAmount || totalAmount,
+                discount: discountAmount,
+                originalAmount: originalAmountDerived,
+                total: totalAmount,
                 shipping: Number(o.shipping_charges || 0),
                 shippingCartons: o.shipping_cartons || 0,
                 shippingRatePerCarton: Number(o.shipping_rate_per_carton || 0),
@@ -1543,16 +1695,22 @@ router.get('/conversations/:tenantId', async (req, res) => {
 
         console.log(`Fetching conversations for tenant: ${tenantId}`);
 
-        const { data: conversations, error: convError } = await supabase
-            .from('conversations')
-            .select(`
+        let convQuery = supabase.from('conversations');
+        if (USE_LOCAL_DB) {
+            // Local SQLite schemas can drift; select('*') avoids hard failures on missing columns.
+            convQuery = convQuery.select('*');
+        } else {
+            convQuery = convQuery.select(`
                 id,
                 end_user_phone,
                 state,
                 last_product_discussed,
                 updated_at,
                 created_at
-            `)
+            `);
+        }
+
+        const { data: conversations, error: convError } = await convQuery
             .eq('tenant_id', tenantId)
             .order('updated_at', { ascending: false })
             .limit(parseInt(limit));
@@ -1848,6 +2006,7 @@ router.get('/products/performance/:tenantId', async (req, res) => {
             .select(`
                 id,
                 name,
+                description,
                 price,
                 stock_quantity,
                 units_per_carton,
@@ -1874,20 +2033,30 @@ router.get('/products/performance/:tenantId', async (req, res) => {
             throw productsError;
         }
 
-        // Get sales data by joining order_items with orders
-        const { data: salesData, error: salesError } = await supabase
-            .from('order_items')
-            .select(`
-                product_id,
-                quantity,
-                price_at_time_of_purchase,
-                orders!inner (
-                    id,
-                    tenant_id,
-                    status
-                )
-            `)
-            .eq('orders.tenant_id', tenantId);
+        // Get sales data (avoid PostgREST join syntax; works in both Supabase and local SQLite)
+        let salesData = null;
+        let salesError = null;
+
+        const { data: tenantOrders, error: tenantOrdersError } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('tenant_id', tenantId);
+
+        if (tenantOrdersError) {
+            salesError = tenantOrdersError;
+        } else {
+            const orderIds = (tenantOrders || []).map(o => o.id).filter(Boolean);
+            if (orderIds.length === 0) {
+                salesData = [];
+            } else {
+                const resItems = await supabase
+                    .from('order_items')
+                    .select('order_id, product_id, quantity, price_at_time_of_purchase')
+                    .in('order_id', orderIds);
+                salesData = resItems?.data || null;
+                salesError = resItems?.error || null;
+            }
+        }
 
         if (salesError) {
             console.warn('Sales data fetch error:', salesError);
@@ -1914,7 +2083,9 @@ router.get('/products/performance/:tenantId', async (req, res) => {
 
                 salesByProduct[productId].totalQuantity += quantity;
                 salesByProduct[productId].totalRevenue += revenue;
-                salesByProduct[productId].totalOrders.add(item.orders.id);
+                // In local mode we only have order_id; in Supabase join mode we have item.orders.id
+                const orderId = item.order_id || item?.orders?.id;
+                if (orderId) salesByProduct[productId].totalOrders.add(orderId);
             });
 
             // Convert Set to count for totalOrders
@@ -1930,6 +2101,7 @@ router.get('/products/performance/:tenantId', async (req, res) => {
             return {
                 id: p.id,
                 name: p.name,
+                description: p.description || null,
                 price: p.price ? Number(p.price) : 0,
                 stockQuantity: p.stock_quantity || 0,
                 unitsPerCarton: p.units_per_carton || 1,
@@ -1952,6 +2124,55 @@ router.get('/products/performance/:tenantId', async (req, res) => {
     } catch (err) {
         console.error('Error /dashboard/products/performance/:tenantId', err);
         res.status(500).json({ success: false, error: 'Failed to fetch product performance' });
+    }
+});
+
+/**
+ * DELETE /api/dashboard/products/:tenantId/:productId
+ * Delete a single product for a tenant
+ */
+router.delete('/products/:tenantId/:productId', async (req, res) => {
+    try {
+        const { tenantId, productId } = req.params;
+        const { data, error } = await supabase
+            .from('products')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('id', productId)
+            .select();
+
+        if (error) {
+            return res.status(500).json({ success: false, error: error.message || 'Failed to delete product' });
+        }
+
+        return res.json({ success: true, deleted: (data && data[0]) ? data[0] : null });
+    } catch (err) {
+        console.error('[Product Delete Error]', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+/**
+ * DELETE /api/dashboard/products/:tenantId
+ * Delete ALL products for a tenant (use with care)
+ */
+router.delete('/products/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const { data, error } = await supabase
+            .from('products')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .select('id');
+
+        if (error) {
+            return res.status(500).json({ success: false, error: error.message || 'Failed to delete products' });
+        }
+
+        return res.json({ success: true, deletedCount: Array.isArray(data) ? data.length : 0 });
+    } catch (err) {
+        console.error('[Products Delete-All Error]', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2162,6 +2383,82 @@ router.get('/messages/:conversationId', async (req, res) => {
 });
 
 /**
+ * POST /api/dashboard/conversation/:tenantId/:conversationId/reply
+ * Send a WhatsApp reply from the dashboard and log it.
+ */
+router.post('/conversation/:tenantId/:conversationId/reply', async (req, res) => {
+    try {
+        const { tenantId, conversationId } = req.params;
+        const text = String(req.body?.text || '').trim();
+
+        if (!tenantId || !conversationId) {
+            return res.status(400).json({ success: false, error: 'tenantId and conversationId required' });
+        }
+        if (!text) {
+            return res.status(400).json({ success: false, error: 'text required' });
+        }
+
+        const { data: conversation, error: convError } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+        if (convError) {
+            console.error('[dashboard.reply.conv.lookup.error]', convError);
+            return res.status(500).json({ success: false, error: 'DB error on conversation lookup' });
+        }
+        if (!conversation) {
+            return res.status(404).json({ success: false, error: 'Conversation not found' });
+        }
+
+        const to = conversation.end_user_phone || conversation.phone_number;
+        if (!to) {
+            return res.status(400).json({ success: false, error: 'Conversation has no phone number' });
+        }
+
+        const messageId = await sendMessage(to, text);
+        if (!messageId) {
+            return res.status(502).json({ success: false, error: 'Failed to send WhatsApp message' });
+        }
+
+        const messagePayload = {
+            conversation_id: conversationId,
+            sender: 'bot',
+            message_body: text,
+            message_type: 'dashboard_reply',
+            // Use an explicit ISO timestamp to avoid timezone/ordering issues (especially in SQLite).
+            created_at: new Date().toISOString()
+        };
+        if (USE_LOCAL_DB) {
+            messagePayload.tenant_id = tenantId;
+        }
+
+        const { error: insertError } = await supabase
+            .from('messages')
+            .insert(messagePayload);
+
+        if (insertError) {
+            console.error('[dashboard.reply.message.insert.error]', insertError);
+            // Message was sent, so still return success, but warn.
+            return res.json({ success: true, messageId, warning: 'Sent but failed to log message' });
+        }
+
+        await supabase
+            .from('conversations')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', conversationId)
+            .eq('tenant_id', tenantId);
+
+        return res.json({ success: true, messageId });
+    } catch (err) {
+        console.error('[dashboard.reply.exception]', err && err.stack ? err.stack : err);
+        return res.status(500).json({ success: false, error: 'Failed to send reply' });
+    }
+});
+
+/**
  * GET /api/dashboard/settings/:tenantId
  * Get tenant settings
  */
@@ -2363,6 +2660,58 @@ router.put('/products/:tenantId/:productId', async (req, res) => {
         res.json({ success: true, product: updated });
     } catch (error) {
         console.error('[Product Update Error]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/dashboard/products/:tenantId
+ * Create a new product for a tenant
+ */
+router.post('/products/:tenantId', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const body = req.body || {};
+        const useLocalDb = process.env.USE_LOCAL_DB === 'true';
+
+        const name = String(body.name || '').trim();
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Product name is required' });
+        }
+
+        // Whitelist fields the UI sends; always enforce tenant_id from path.
+        const insertData = {
+            tenant_id: tenantId,
+            name,
+            sku: body.sku ?? null,
+            description: body.description ?? null,
+            price: body.price ?? null,
+            stock_quantity: body.stock_quantity ?? 0,
+            brand: body.brand ?? null,
+            category: body.category ?? null,
+            image_url: body.image_url ?? null,
+            packaging_unit: body.packaging_unit ?? null,
+            units_per_carton: body.units_per_carton ?? 1
+        };
+
+        // In Supabase mode, some schemas use `category_id` as the FK; set it when safe.
+        if (!useLocalDb && insertData.category) {
+            insertData.category_id = insertData.category;
+        }
+
+        const { data: created, error } = await supabase
+            .from('products')
+            .insert([insertData])
+            .select()
+            .single();
+
+        if (error) {
+            return res.status(500).json({ success: false, error: error.message || 'Failed to create product' });
+        }
+
+        res.json({ success: true, product: created });
+    } catch (error) {
+        console.error('[Product Create Error]', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });

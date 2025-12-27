@@ -4,6 +4,60 @@ const router = express.Router();
 const { supabase } = require('../../services/config');
 const { scheduleFollowUp, generateFollowUpConfirmation } = require('../../services/followUpSchedulerService');
 const { sendMessage } = require('../../services/whatsappService');
+const { getConversationId } = require('../../services/historyService');
+
+function computeLeadType(conversationRow) {
+    const now = Date.now();
+    const last = conversationRow?.last_message_at ? Date.parse(conversationRow.last_message_at) : NaN;
+    const created = conversationRow?.created_at ? Date.parse(conversationRow.created_at) : NaN;
+
+    const lastMs = Number.isFinite(last) ? last : (Number.isFinite(created) ? created : now);
+    const createdMs = Number.isFinite(created) ? created : lastMs;
+
+    const deltaLast = Math.max(0, now - lastMs);
+    const deltaCreated = Math.max(0, now - createdMs);
+
+    const hour = 60 * 60 * 1000;
+    const day = 24 * hour;
+
+    // Priority: very recent activity => HOT/WARM.
+    if (deltaLast <= hour) return 'hot';
+    if (deltaLast <= day) return 'warm';
+
+    // First-time-ish (created recently, but not actively chatting now)
+    if (deltaCreated <= day) return 'new';
+
+    return 'cold';
+}
+
+/**
+ * GET /api/followups/:tenantId/conversation-by-phone?phone=...
+ * Resolve a conversation id for a phone number (creates conversation if missing).
+ * Used by dashboard Follow-ups tab to open chat history.
+ */
+router.get('/:tenantId/conversation-by-phone', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const phone = String(req.query.phone || '').trim();
+
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Missing tenantId' });
+        }
+        if (!phone) {
+            return res.status(400).json({ success: false, error: 'Missing phone' });
+        }
+
+        const conversationId = await getConversationId(tenantId, phone);
+        if (!conversationId) {
+            return res.status(500).json({ success: false, error: 'Failed to resolve conversation' });
+        }
+
+        return res.json({ success: true, conversationId });
+    } catch (error) {
+        console.error('[API] Error resolving conversation-by-phone:', error);
+        return res.status(500).json({ success: false, error: error.message || String(error) });
+    }
+});
 
 /**
  * GET /api/followups/:tenantId
@@ -120,6 +174,73 @@ router.get('/:tenantId/stats', async (req, res) => {
     } catch (error) {
         console.error('[API] Error fetching follow-up stats:', error);
         res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/followups/:tenantId/leads
+ * Lists recent conversations (people chatting with the bot) with auto lead_type tagging.
+ * Query params:
+ * - lead_type: hot|warm|cold|new
+ * - limit: default 200
+ */
+router.get('/:tenantId/leads', async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const { lead_type, limit = 200 } = req.query;
+
+        const { data: conversations, error } = await supabase
+            .from('conversations')
+            .select('id, end_user_phone, created_at, last_message_at, lead_type')
+            .eq('tenant_id', tenantId)
+            .order('last_message_at', { ascending: false })
+            .limit(parseInt(limit));
+
+        if (error) throw error;
+
+        const enriched = [];
+        for (const c of (conversations || [])) {
+            const computed = computeLeadType(c);
+
+            // Best-effort persistence (ignore schema mismatch in non-local deployments)
+            if (c?.id && c.lead_type !== computed) {
+                try {
+                    await supabase
+                        .from('conversations')
+                        .update({ lead_type: computed })
+                        .eq('id', c.id)
+                        .eq('tenant_id', tenantId);
+                } catch (_) {
+                    // ignore
+                }
+            }
+
+            const row = {
+                id: c.id,
+                phone: c.end_user_phone,
+                created_at: c.created_at,
+                last_message_at: c.last_message_at,
+                lead_type: computed
+            };
+
+            enriched.push(row);
+        }
+
+        const filtered = lead_type
+            ? enriched.filter(r => r.lead_type === String(lead_type).toLowerCase())
+            : enriched;
+
+        return res.json({
+            success: true,
+            leads: filtered,
+            total: filtered.length
+        });
+    } catch (error) {
+        console.error('[API] Error fetching leads:', error);
+        return res.status(500).json({
             success: false,
             error: error.message
         });
@@ -279,7 +400,7 @@ router.post('/:tenantId/:followupId/send-now', async (req, res) => {
 
         // Process the follow-up
         const { processIndividualFollowUp } = require('../../services/followUpSchedulerService');
-        await processIndividualFollowUp(followUp);
+        await processIndividualFollowUp(followUp, { throwOnError: true });
 
         res.json({
             success: true,
@@ -302,6 +423,16 @@ router.post('/:tenantId/:followupId/send-now', async (req, res) => {
 router.get('/:tenantId/suggestions', async (req, res) => {
     try {
         const { tenantId } = req.params;
+
+        // Local SQLite wrapper does not support PostgREST join syntax (e.g. conversations!inner(...)).
+        // Return an empty list rather than failing the entire Follow-ups page.
+        if (process.env.USE_LOCAL_DB === 'true') {
+            return res.json({
+                success: true,
+                suggestions: [],
+                total: 0
+            });
+        }
 
         // Get customers who need follow-up
         // 1. Customers with abandoned carts (no order in last 3 days)

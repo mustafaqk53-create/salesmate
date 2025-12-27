@@ -85,6 +85,13 @@ class IntentClassifier {
   quickClassify(message, context = {}) {
     const lowerMessage = message.toLowerCase().trim();
 
+      // Product catalog/listing intent (show products, what products do you have, catalog, product list, etc)
+      if (/\b(what|which|show|list|display|see|view)\b.*\b(products?|catalog|items|stock|available)\b/i.test(lowerMessage) ||
+          /\b(products?|catalog|items|stock|available)\b.*\b(please|show|list|display|see|view|have|available)\b/i.test(lowerMessage) ||
+          lowerMessage === 'catalog' || lowerMessage === 'show products' || lowerMessage === 'product list' || lowerMessage === 'products') {
+        return { intent: this.intents.PRODUCT_INFO, confidence: 0.93, method: 'semantic-product-list' };
+      }
+
     // Cart operation detection using semantic keywords (language-agnostic)
     const cartKeywords = ['cart', 'basket', 'trolley', 'shopping', 'order list'];
     const clearKeywords = ['clear', 'empty', 'delete', 'remove', 'reset', 'cancel', 'clean', 'erase', 

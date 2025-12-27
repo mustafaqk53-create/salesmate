@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAK Feature: AI Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/features/_shared.css" />
+</head>
+<body class="min-h-screen">
+  <section class="gradient-bg py-12">
+    <div class="container mx-auto px-6">
+      <div class="flex items-center justify-between">
+        <a href="/" class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(0, 230, 118, 0.16); border: 1px solid rgba(0, 230, 118, 0.26);">
+            <i class="fab fa-whatsapp" style="color: var(--success);"></i>
+          </div>
+          <div>
+            <div class="font-extrabold tracking-tight text-white">SAK</div>
+            <div class="text-xs muted-2">WhatsApp AI Sales Assistant</div>
+          </div>
+        </a>
+        <div class="hidden md:flex items-center gap-2">
+          <a href="/#features" class="nav-link">Features</a>
+          <a href="/login.html" class="nav-link">Login</a>
+        </div>
+      </div>
+
+      <div class="mt-10">
+        <div class="breadcrumb text-sm muted-2">
+          <a href="/">Home</a> <span class="mx-2">/</span> <a href="/#features">Features</a> <span class="mx-2">/</span> <span class="text-white">AI Assistant</span>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black text-white mt-4">AI Assistant</h1>
+        <p class="text-lg muted mt-3 max-w-3xl">Your WhatsApp-first AI that understands intent, answers from your catalog + knowledge sources, and guides customers toward checkout.</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass"><i class="fas fa-brain" style="color: var(--primary);"></i><span class="text-sm">Intent understanding</span></span>
+          <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass"><i class="fas fa-box" style="color: var(--primary);"></i><span class="text-sm">Product-aware answers</span></span>
+          <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass"><i class="fas fa-file-lines" style="color: var(--primary);"></i><span class="text-sm">Docs + website knowledge</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16" style="background: #0f0518;">
+    <div class="container mx-auto px-6">
+      <div class="grid lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2">
+          <div class="card p-8">
+            <h2 class="text-2xl font-extrabold text-white">What it does</h2>
+            <p class="muted mt-3">The AI Assistant handles the majority of inbound WhatsApp queries end-to-end: it understands what the customer wants, pulls the right product information, asks for missing details, and moves the chat toward a confirmed order.</p>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Key capabilities</h3>
+            <ul class="mt-3 space-y-2 muted">
+              <li>• Understands intent (pricing, availability, order placement, policies, status requests).</li>
+              <li>• Uses your Products + Documents + Website Indexing as its knowledge base.</li>
+              <li>• Suggests alternatives/upsells when a product is unavailable or incomplete.</li>
+              <li>• Escalates or routes edge cases to the dashboard workflow when needed.</li>
+            </ul>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Typical flow</h3>
+            <ol class="mt-3 space-y-2 muted">
+              <li>1) Customer asks a question in WhatsApp.</li>
+              <li>2) AI identifies the intent and extracts entities (product name/SKU, quantity, etc.).</li>
+              <li>3) AI answers using product data + knowledge sources and asks follow-up questions.</li>
+              <li>4) Conversation progresses into cart/order steps handled by your operational modules.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div>
+          <div class="card p-8">
+            <h3 class="text-xl font-extrabold text-white">Related features</h3>
+            <div class="mt-4 space-y-2">
+              <a class="menu-item" href="/features/products.html"><div class="menu-title">Products</div><div class="menu-desc">Catalog & pricing for accurate answers</div></a>
+              <a class="menu-item" href="/features/documents.html"><div class="menu-title">Documents</div><div class="menu-desc">Policies/FAQs for consistent replies</div></a>
+              <a class="menu-item" href="/features/website-indexing.html"><div class="menu-title">Website Indexing</div><div class="menu-desc">Answer from your website content</div></a>
+            </div>
+
+            <div class="mt-8">
+              <button class="btn-primary w-full" onclick="window.location.href='/login.html'">Open Dashboard</button>
+              <button class="btn-secondary w-full mt-3" onclick="window.location.href='/'">Back to Home</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/features/_layout.js"></script>
+</body>
+</html>

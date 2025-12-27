@@ -25,15 +25,20 @@ async function sendAndSaveMessage(to, messageBody, conversationId, tenantId) {
         
         // Save bot message to database
         try {
-            await supabase.from('messages').insert({
-                conversation_id: conversationId,
-                message_body: messageBody,
-                sender: 'bot',
-                message_type: 'bot_response',
-                whatsapp_message_id: messageId,
-                created_at: new Date().toISOString()
-            });
-            console.log('[MAIN_HANDLER] Bot message saved to database');
+            if (conversationId) {
+                await supabase.from('messages').insert({
+                    tenant_id: tenantId,
+                    conversation_id: conversationId,
+                    message_body: messageBody,
+                    sender: 'bot',
+                    message_type: 'bot_response',
+                    whatsapp_message_id: messageId,
+                    created_at: new Date().toISOString()
+                });
+                console.log('[MAIN_HANDLER] Bot message saved to database');
+            } else {
+                console.warn('[MAIN_HANDLER] No conversationId; skipping bot message save');
+            }
         } catch (dbError) {
             console.error('[MAIN_HANDLER] Failed to save bot message:', dbError.message, dbError);
         }
@@ -496,7 +501,7 @@ async function handleCustomerMessage(req, res, tenant, from, userQuery, conversa
         const { handleSmartResponse } = require('./smartResponseHandler');
         const smartResponse = await handleSmartResponse(req, res, tenant, from, userQuery, intentResult, conversation);
         if (smartResponse && smartResponse.response) {
-            await sendAndSaveMessage(from, smartResponse.response, conversation.id, tenant.id);
+            await sendAndSaveMessage(from, smartResponse.response, conversation?.id, tenant.id);
             return res.status(200).json({ ok: true, type: smartResponse.source || intentResult?.intent || 'smart_response' });
         }
         

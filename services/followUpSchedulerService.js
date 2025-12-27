@@ -1,7 +1,37 @@
 // services/followUpSchedulerService.js
 const { supabase } = require('./config');
 const { sendMessage } = require('./whatsappService');
+const { sendWebMessage, getClientStatus } = require('./whatsappWebService');
 const { logMessage } = require('./historyService');
+
+const toDigits = (value) => String(value || '').replace(/\D/g, '');
+
+/**
+ * Send follow-up message using the best available transport.
+ * Prefers WhatsApp Web (desktop agent / QR) when ready, falls back to Maytapi.
+ */
+async function sendFollowUpSmart(tenantId, phoneNumber, messageText) {
+    const waWebStatus = getClientStatus(tenantId);
+    if (waWebStatus?.status === 'ready' && waWebStatus?.hasClient) {
+        const res = await sendWebMessage(tenantId, phoneNumber, messageText);
+        return { method: 'whatsapp-web', messageId: res?.messageId || null };
+    }
+
+    // Fallback to Maytapi (expects digits)
+    const to = toDigits(phoneNumber);
+    if (!to) {
+        throw new Error('Invalid recipient phone number');
+    }
+
+    const messageId = await sendMessage(to, messageText);
+    if (!messageId) {
+        const hint = process.env.USE_LOCAL_DB === 'true'
+            ? 'Connect WhatsApp Web (QR) or configure Maytapi env vars.'
+            : 'Check Maytapi configuration and connectivity.';
+        throw new Error(`Failed to send follow-up message. ${hint}`);
+    }
+    return { method: 'maytapi', messageId };
+}
 
 /**
  * Follow-up detection patterns configuration
@@ -458,7 +488,8 @@ const processScheduledFollowUps = async () => {
 /**
  * Process an individual follow-up
  */
-const processIndividualFollowUp = async (followUp) => {
+const processIndividualFollowUp = async (followUp, options = {}) => {
+    const { throwOnError = false } = options;
     try {
         console.log('[FOLLOWUP_PROCESS_INDIVIDUAL] Processing:', followUp.id);
         
@@ -535,8 +566,8 @@ const processIndividualFollowUp = async (followUp) => {
             followUpMessage += `${followUp.description}\n\nHow can I help you today?`;
         }
         
-        // Send the follow-up message
-        await sendMessage(followUp.end_user_phone, followUpMessage);
+        // Send the follow-up message (smart transport)
+        const sendResult = await sendFollowUpSmart(followUp.tenant_id, followUp.end_user_phone, followUpMessage);
         
         // Log the follow-up message
         await logMessage(
@@ -552,6 +583,8 @@ const processIndividualFollowUp = async (followUp) => {
             .from('scheduled_followups')
             .update({
                 status: 'completed',
+                delivery_method: sendResult?.method || null,
+                whatsapp_message_id: sendResult?.messageId || null,
                 completed_at: new Date().toISOString()
             })
             .eq('id', followUp.id);
@@ -570,6 +603,10 @@ const processIndividualFollowUp = async (followUp) => {
                 completed_at: new Date().toISOString()
             })
             .eq('id', followUp.id);
+
+        if (throwOnError) {
+            throw error;
+        }
     }
 };
 

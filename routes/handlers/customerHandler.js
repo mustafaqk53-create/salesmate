@@ -1,6 +1,50 @@
 // Modular customer handler: delegates all logic to mainHandler.js
 const { handleCustomerMessage } = require('./modules/mainHandler');
 
+// Convenience handler used by existing code paths (e.g. WAHA webhook bridge and /api_new/customer)
+// Expects JSON body: { tenant_id, customer_phone, customer_message }
+const handleCustomerTextMessage = async (req, res) => {
+    const body = req.body || {};
+    const tenantId = body.tenant_id || body.tenantId;
+    const customerPhoneRaw = body.customer_phone || body.from || body.phone;
+    const customerMessage = body.customer_message || body.message || body.text;
+
+    if (!tenantId || !customerPhoneRaw || typeof customerMessage !== 'string') {
+        return res.status(400).json({
+            ok: false,
+            error: 'Missing required fields',
+            required: ['tenant_id', 'customer_phone', 'customer_message']
+        });
+    }
+
+    const from = String(customerPhoneRaw).replace(/@c\.us$/i, '').trim();
+
+    const { supabase } = require('../../services/config');
+    const { data: tenant, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', tenantId)
+        .single();
+
+    if (error || !tenant) {
+        return res.status(404).json({
+            ok: false,
+            error: 'Tenant not found'
+        });
+    }
+
+    // Build the request shape expected by handleCustomer()
+    req.tenant = tenant;
+    req.message = {
+        from,
+        to: tenant.bot_phone_number || null,
+        type: 'text',
+        text: { body: String(customerMessage) }
+    };
+
+    return handleCustomer(req, res);
+};
+
 const handleCustomer = async (req, res) => {
     const { message, tenant } = req;
     const from = message.from;
@@ -33,6 +77,7 @@ const handleCustomer = async (req, res) => {
                 .from('conversations')
                 .insert({
                     tenant_id: tenant.id,
+                    phone_number: from,
                     end_user_phone: from,
                     state: 'IDLE',
                     metadata: {},
@@ -59,5 +104,6 @@ const handleCustomer = async (req, res) => {
 };
 
 module.exports = {
-    handleCustomer
+    handleCustomer,
+    handleCustomerTextMessage
 };

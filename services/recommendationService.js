@@ -4,6 +4,7 @@
  */
 const { supabase } = require('./config');
 const { createEmbedding } = require('./aiService'); // Reuse the embedding function
+const { searchProducts } = require('./productService');
 
 /**
  * Finds and recommends the best products for a user's natural language query.
@@ -13,18 +14,8 @@ const { createEmbedding } = require('./aiService'); // Reuse the embedding funct
  */
 const getProductRecommendations = async (tenantId, userQuery) => {
     try {
-        // 1. Create an embedding for the user's query.
-        const queryEmbedding = await createEmbedding(userQuery);
-
-        // 2. Use the existing RPC function to find the most semantically similar products.
-        const { data: products, error } = await supabase.rpc('match_products', {
-            tenant_id_param: tenantId,
-            query_embedding: queryEmbedding,
-            match_threshold: 0.75, // Use a slightly lower threshold for broader recommendation matching
-            match_count: 3 // Recommend the top 3 matches
-        });
-
-        if (error) throw error;
+        // Prefer productService.searchProducts since it gracefully falls back in local DB mode.
+        const products = await searchProducts(tenantId, userQuery, 3);
 
         if (!products || products.length === 0) {
             return null; // Return null to indicate no recommendations were found.

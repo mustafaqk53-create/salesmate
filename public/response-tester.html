@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Response Tester</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 980px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    label { display: block; font-size: 12px; color: #444; margin-bottom: 6px; }
+    input, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; }
+    textarea { min-height: 120px; }
+    .card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 14px; }
+    .col { flex: 1 1 280px; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; background: #fff; }
+    button.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+    pre { background: #0b1020; color: #e5e7eb; padding: 12px; border-radius: 12px; overflow: auto; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Response Tester</h1>
+  <p class="muted">Previews responses without sending WhatsApp messages.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>Tenant ID</label>
+        <input id="tenantId" placeholder="e.g. 2512a71d..." />
+      </div>
+      <div class="col">
+        <label>Customer Phone (optional)</label>
+        <input id="phone" placeholder="e.g. 9199..." />
+      </div>
+    </div>
+    <div style="margin-top: 12px;">
+      <label>Message</label>
+      <textarea id="message" placeholder="Ask a question like: price of 8x80 or tell me about product X..."></textarea>
+    </div>
+
+    <div class="row" style="margin-top: 12px;">
+      <button class="primary" id="btnSmart">Preview Smart Response</button>
+      <button id="btnFull">Preview Full Response (Smart + AI fallback)</button>
+      <button id="btnClear">Clear Output</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top: 18px;">Output</h2>
+  <pre id="output">(no output yet)</pre>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        const msg = data.error || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function render(obj) {
+      $('output').textContent = JSON.stringify(obj, null, 2);
+    }
+
+    async function run(endpoint) {
+      const tenantId = $('tenantId').value.trim();
+      const phone = $('phone').value.trim();
+      const message = $('message').value;
+      if (!tenantId) return render({ error: 'tenantId is required' });
+      if (!message.trim()) return render({ error: 'message is required' });
+
+      render({ loading: true, endpoint });
+      const data = await postJson(endpoint, { tenantId, phone: phone || null, message });
+      render(data);
+    }
+
+    $('btnSmart').addEventListener('click', () => run('/api/test/preview-smart-response'));
+    $('btnFull').addEventListener('click', () => run('/api/test/preview-full-response'));
+    $('btnClear').addEventListener('click', () => render('(cleared)'));
+  </script>
+</body>
+</html>

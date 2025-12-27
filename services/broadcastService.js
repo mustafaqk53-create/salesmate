@@ -17,6 +17,11 @@ const BATCH_COOLDOWN = 1 * 60 * 1000;        // 1 minute between batches
 const MAX_RETRIES = 3;
 const LOCK_TIMEOUT = 1 * 60 * 1000;          // 1 minute lock timeout
 
+// In local SQLite, `broadcast_recipients` may be a legacy contact-list table.
+// Use a dedicated table for per-campaign delivery tracking.
+const RECIPIENT_TRACKING_TABLE =
+    process.env.USE_LOCAL_DB === 'true' ? 'broadcast_campaign_recipients' : 'broadcast_recipients';
+
 // Helper function for human-like random delays
 const getHumanDelay = () => {
     return BASE_MESSAGE_DELAY + Math.floor(Math.random() * MAX_RANDOM_DELAY);
@@ -71,12 +76,22 @@ const sendMessageSmart = async (tenantId, phoneNumber, messageText, mediaUrl = n
         
         // Fallback to Maytapi
         BroadcastLogger.info('Using Maytapi for message', { tenantId, phoneNumber });
+        let messageId = null;
         if (mediaUrl) {
-            await sendMessageWithImage(phoneNumber, messageText, mediaUrl);
+            messageId = await sendMessageWithImage(phoneNumber, messageText, mediaUrl);
         } else {
-            await sendMessage(phoneNumber, messageText);
+            messageId = await sendMessage(phoneNumber, messageText);
         }
-        return { success: true, method: 'maytapi' };
+
+        // whatsappService returns null on errors; treat that as failure to avoid false "sent".
+        if (!messageId) {
+            const hint = process.env.USE_LOCAL_DB === 'true'
+                ? 'Connect WhatsApp Web (QR) or configure Maytapi env vars.'
+                : 'Check Maytapi configuration and connectivity.';
+            throw new Error(`Maytapi send failed (no message id). ${hint}`);
+        }
+
+        return { success: true, method: 'maytapi', messageId };
         
     } catch (error) {
         BroadcastLogger.error('All message sending methods failed', error, { tenantId, phoneNumber });
@@ -539,7 +554,7 @@ const processBroadcastQueue = async () => {
                     })
                     .eq('id', message.id);
                 
-                const phoneNumber = message.to_phone_number;
+                const phoneNumber = message.to_phone_number || message.phone_number || message.to_phone;
                 if (!phoneNumber) {
                     throw new Error('Phone number missing from record');
                 }
@@ -619,7 +634,7 @@ const processBroadcastQueue = async () => {
                 
                 // Update recipient status in broadcast_recipients
                 await supabase
-                    .from('broadcast_recipients')
+                    .from(RECIPIENT_TRACKING_TABLE)
                     .update({
                         status: 'sent',
                         sent_at: new Date().toISOString()
@@ -659,7 +674,7 @@ const processBroadcastQueue = async () => {
                     
                     // Mark recipient as failed in broadcast_recipients
                     await supabase
-                        .from('broadcast_recipients')
+                        .from(RECIPIENT_TRACKING_TABLE)
                         .update({
                             status: 'failed',
                             error_message: error.message
@@ -882,6 +897,7 @@ const scheduleMultiDayBroadcast = async (tenantId, campaignName, message, startA
             
             // Insert recipients for this day
             const recipients = batch.recipients.map(phone => ({
+                ...(process.env.USE_LOCAL_DB === 'true' ? { tenant_id: tenantId } : {}),
                 campaign_id: campaignId,
                 phone: phone,
                 status: 'pending'
@@ -890,7 +906,7 @@ const scheduleMultiDayBroadcast = async (tenantId, campaignName, message, startA
             for (let j = 0; j < recipients.length; j += INSERT_BATCH_SIZE) {
                 const recipientBatch = recipients.slice(j, j + INSERT_BATCH_SIZE);
                 const { error: recipientError } = await supabase
-                    .from('broadcast_recipients')
+                    .from(RECIPIENT_TRACKING_TABLE)
                     .insert(recipientBatch);
                 
                 if (recipientError) {
@@ -1060,6 +1076,8 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
         
         const schedules = validRecipients.map((phone, index) => ({
             tenant_id: tenantId,
+            // Older local SQLite schema required a campaign-level name
+            name: campaignName.slice(0, 255),
             to_phone_number: phone,
             message_text: message.slice(0, 4096),
             message_body: message.slice(0, 4096),
@@ -1097,7 +1115,9 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
         }
         
         // Insert recipients into broadcast_recipients table for per-contact tracking
+        const isLocalDb = process.env.USE_LOCAL_DB === 'true';
         const recipients = validRecipients.map(phone => ({
+            ...(isLocalDb ? { tenant_id: tenantId } : {}),
             campaign_id: campaignId,
             phone: phone,
             status: 'pending'
@@ -1106,7 +1126,7 @@ const scheduleBroadcast = async (tenantId, campaignName, message, sendAt, phoneN
         for (let i = 0; i < recipients.length; i += INSERT_BATCH_SIZE) {
             const batch = recipients.slice(i, i + INSERT_BATCH_SIZE);
             const { error: recipientError } = await supabase
-                .from('broadcast_recipients')
+                .from(RECIPIENT_TRACKING_TABLE)
                 .insert(batch);
             
             if (recipientError) {

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAK Feature: Documents</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/features/_shared.css" />
+</head>
+<body class="min-h-screen">
+  <section class="gradient-bg py-12">
+    <div class="container mx-auto px-6">
+      <div class="flex items-center justify-between">
+        <a href="/" class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(0, 230, 118, 0.16); border: 1px solid rgba(0, 230, 118, 0.26);">
+            <i class="fab fa-whatsapp" style="color: var(--success);"></i>
+          </div>
+          <div>
+            <div class="font-extrabold tracking-tight text-white">SAK</div>
+            <div class="text-xs muted-2">WhatsApp AI Sales Assistant</div>
+          </div>
+        </a>
+        <div class="hidden md:flex items-center gap-2">
+          <a href="/#features" class="nav-link">Features</a>
+          <a href="/login.html" class="nav-link">Login</a>
+        </div>
+      </div>
+
+      <div class="mt-10">
+        <div class="breadcrumb text-sm muted-2">
+          <a href="/">Home</a> <span class="mx-2">/</span> <a href="/#features">Features</a> <span class="mx-2">/</span> <span class="text-white">Documents</span>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black text-white mt-4">Documents</h1>
+        <p class="text-lg muted mt-3 max-w-3xl">Upload documents so the assistant can answer consistently from policies, FAQs, catalogs, and other internal materials.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16" style="background: #0f0518;">
+    <div class="container mx-auto px-6">
+      <div class="grid lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2">
+          <div class="card p-8">
+            <h2 class="text-2xl font-extrabold text-white">What it does</h2>
+            <p class="muted mt-3">Documents creates a curated knowledge base for your sales assistant—so answers stay aligned with your business rules and brand messaging.</p>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Key capabilities</h3>
+            <ul class="mt-3 space-y-2 muted">
+              <li>• Upload documents used for replies (FAQs, policies, product sheets).</li>
+              <li>• Improve accuracy for repeat questions (returns, shipping, warranties, GST, etc.).</li>
+              <li>• Reduce human load by standardizing answers across the team.</li>
+            </ul>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Where it helps most</h3>
+            <ul class="mt-3 space-y-2 muted">
+              <li>• Policy questions: returns, delivery timelines, payment options.</li>
+              <li>• Product details: pack sizes, specs, compatibility, usage notes.</li>
+              <li>• Business info: address, GST, hours, and standard processes.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div>
+          <div class="card p-8">
+            <h3 class="text-xl font-extrabold text-white">Related features</h3>
+            <div class="mt-4 space-y-2">
+              <a class="menu-item" href="/features/ai-assistant.html"><div class="menu-title">AI Assistant</div><div class="menu-desc">Uses docs to answer accurately</div></a>
+              <a class="menu-item" href="/features/website-indexing.html"><div class="menu-title">Website Indexing</div><div class="menu-desc">Add website pages as knowledge</div></a>
+            </div>
+            <div class="mt-8">
+              <button class="btn-primary w-full" onclick="window.location.href='/login.html'">Open Dashboard</button>
+              <button class="btn-secondary w-full mt-3" onclick="window.location.href='/'">Back to Home</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/features/_layout.js"></script>
+</body>
+</html>

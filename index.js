@@ -468,6 +468,7 @@ app.post('/api/admin/clear-tenant-data', async (req, res) => {
 const axios = require('axios');
 const WAHA_URL = process.env.WAHA_URL || 'http://localhost:3000';
 const WAHA_API_KEY = process.env.WAHA_API_KEY || 'your-secret-key';
+const { toWhatsAppFormat, normalizePhone } = require('./services/phoneUtils');
 
 // Helper function to make Waha API calls with auth
 async function wahaRequest(method, url, data = null, responseType = 'json') {
@@ -661,15 +662,35 @@ app.post('/api/waha/webhook', async (req, res) => {
 
     // Handle incoming message
     if (event === 'message' && payload?.from && payload?.body) {
-      const from = payload.from.replace('@c.us', '');
-      const message = payload.body;
-      
-      // Get tenant ID from session name
-      const tenantId = session.replace('tenant_', '');
-      
-      console.log(`[WAHA] Processing message from ${from} for tenant ${tenantId}: ${message.substring(0, 50)}...`);
-      
-      // Format the request to match existing customer handler
+      const from = String(payload.from || '').replace('@c.us', '');
+      const message = String(payload.body || '');
+
+      // Resolve tenantId
+      let tenantId = null;
+      if (typeof session === 'string' && session.startsWith('tenant_')) {
+        tenantId = session.replace('tenant_', '');
+      } else {
+        // Fallback: map session_name -> tenant_id (common in local/dev)
+        try {
+          const { supabase } = require('./services/config');
+          const { data: conn } = await supabase
+            .from('whatsapp_connections')
+            .select('tenant_id')
+            .eq('session_name', String(session))
+            .single();
+          if (conn?.tenant_id) tenantId = conn.tenant_id;
+        } catch (e) {
+          console.warn('[WAHA] Could not resolve tenant from session_name:', e?.message || e);
+        }
+      }
+
+      console.log(`[WAHA] Processing message from ${from} for tenant ${tenantId || 'UNKNOWN'}: ${message.substring(0, 50)}...`);
+      if (!tenantId) {
+        console.warn('[WAHA] Skipping message: tenantId unresolved for session', session);
+        return res.json({ ok: true, skipped: true, reason: 'tenant_unresolved' });
+      }
+
+      // Format request to match existing customer handler
       const formattedReq = {
         body: {
           customer_phone: from,
@@ -678,36 +699,41 @@ app.post('/api/waha/webhook', async (req, res) => {
         }
       };
 
-      // Create response wrapper to capture AI reply
-      let aiReply = null;
       const formattedRes = {
-        status: (code) => ({
-          json: (data) => {
-            if (data.reply) {
-              aiReply = data.reply;
-            }
-            return { status: code, data };
-          }
-        }),
-        json: (data) => {
-          if (data.reply) {
-            aiReply = data.reply;
-          }
-          return data;
-        }
+        status: () => ({ json: () => null }),
+        json: () => null
       };
 
-      // Process through existing customer handler
-      await customerHandler.handleCustomerTextMessage(formattedReq, formattedRes);
+      // Capture outbound messages (main handler normally uses Maytapi). We want to reply via WAHA.
+      const prevDesktop = !!global.desktopAgentMode;
+      const prevCaptured = global.capturedMessage;
+      const prevCapturedMessages = global.capturedMessages;
+      global.desktopAgentMode = true;
+      global.capturedMessage = null;
+      global.capturedMessages = [];
 
-      // Send AI reply back via Waha
-      if (aiReply) {
-        await wahaRequest('POST', '/api/sendText', {
-          session: session,
-          chatId: payload.from,
-          text: aiReply
-        });
-        console.log(`[WAHA] AI reply sent to ${from}`);
+      try {
+        await customerHandler.handleCustomerTextMessage(formattedReq, formattedRes);
+      } finally {
+        const outgoing = Array.isArray(global.capturedMessages) && global.capturedMessages.length
+          ? global.capturedMessages
+          : (global.capturedMessage ? [global.capturedMessage] : []);
+
+        global.desktopAgentMode = prevDesktop;
+        global.capturedMessage = prevCaptured;
+        global.capturedMessages = prevCapturedMessages;
+
+        for (const text of outgoing) {
+          if (typeof text !== 'string' || !text.trim()) continue;
+          await wahaRequest('POST', '/api/sendText', {
+            session: session,
+            chatId: payload.from,
+            text
+          });
+        }
+        if (outgoing.length) {
+          console.log(`[WAHA] Sent ${outgoing.length} captured reply message(s) to ${from}`);
+        }
       }
     }
 
@@ -796,6 +822,18 @@ async function sendBroadcastViaWaha(sessionName, recipients, message, imageBase6
   const messageDelay = delays.messageDelay || 500;
   const batchDelay = delays.batchDelay || 2000;
 
+  // Preflight: session must be WORKING or sending will silently fail depending on WAHA config
+  try {
+    const statusRes = await wahaRequest('GET', `/api/sessions/${sessionName}`);
+    const sessionStatus = statusRes?.data?.status;
+    if (sessionStatus !== 'WORKING') {
+      throw new Error(`WAHA session '${sessionName}' not ready (status=${sessionStatus || 'unknown'})`);
+    }
+  } catch (e) {
+    console.error('[WAHA_BROADCAST] Session preflight failed:', e.response?.data || e.message);
+    throw e;
+  }
+
   console.log(`[WAHA_BROADCAST] Starting broadcast to ${recipients.length} recipients`);
   console.log(`[WAHA_BROADCAST] Settings: batchSize=${batchSize}, messageDelay=${messageDelay}ms, batchDelay=${batchDelay}ms`);
 
@@ -806,11 +844,15 @@ async function sendBroadcastViaWaha(sessionName, recipients, message, imageBase6
     for (const recipient of batch) {
       try {
         const phone = recipient.phone || recipient;
-        const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
+        const normalized = normalizePhone(phone);
+        const chatId = toWhatsAppFormat(normalized);
+        if (!chatId) {
+          throw new Error('Invalid recipient phone number');
+        }
 
         if (imageBase64) {
           // Send image with caption
-          await wahaRequest('POST', '/api/sendImage', {
+          const resp = await wahaRequest('POST', '/api/sendImage', {
             session: sessionName,
             chatId: chatId,
             file: {
@@ -819,17 +861,23 @@ async function sendBroadcastViaWaha(sessionName, recipients, message, imageBase6
             },
             caption: message
           });
+          if (resp?.data?.error) {
+            throw new Error(resp.data.error);
+          }
         } else {
           // Send text message
-          await wahaRequest('POST', '/api/sendText', {
+          const resp = await wahaRequest('POST', '/api/sendText', {
             session: sessionName,
             chatId: chatId,
             text: message
           });
+          if (resp?.data?.error) {
+            throw new Error(resp.data.error);
+          }
         }
 
-        results.push({ phone, success: true });
-        console.log(`[WAHA_BROADCAST] ✅ Sent to ${phone}`);
+        results.push({ phone: normalized || String(phone), success: true });
+        console.log(`[WAHA_BROADCAST] ✅ Sent to ${normalized || phone}`);
 
         // Delay between messages in batch
         if (messageDelay > 0) {
@@ -838,7 +886,7 @@ async function sendBroadcastViaWaha(sessionName, recipients, message, imageBase6
 
       } catch (error) {
         results.push({ phone: recipient.phone || recipient, success: false, error: error.message });
-        console.error(`[WAHA_BROADCAST] ❌ Failed to send to ${recipient.phone || recipient}:`, error.message);
+        console.error(`[WAHA_BROADCAST] ❌ Failed to send to ${recipient.phone || recipient}:`, error.response?.data || error.message);
       }
     }
 
@@ -1784,6 +1832,200 @@ app.post('/api/test/simulate-bot-response', (req, res) => {
     });
   } else {
     res.status(500).json({ error: 'Realtime service not available' });
+  }
+});
+
+// 4. Preview smart response (no WhatsApp send)
+app.post('/api/test/preview-smart-response', async (req, res) => {
+  try {
+    const { tenantId, phone, message } = req.body || {};
+    if (!tenantId || !message) {
+      return res.status(400).json({ success: false, error: 'tenantId and message are required' });
+    }
+
+    const { getSmartResponse } = require('./services/smartResponseRouter');
+    const result = await getSmartResponse(String(message), String(tenantId), phone ? String(phone) : null);
+    return res.json({ success: true, result: result || null });
+  } catch (error) {
+    console.error('[TEST] preview-smart-response error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to preview smart response' });
+  }
+});
+
+// 4.5 Preview full customer handler reply (runs the real handler pipeline, no WhatsApp send)
+app.post('/api/test/preview-customer-handler', async (req, res) => {
+  try {
+    const { tenantId, phone, message } = req.body || {};
+    if (!tenantId || !message) {
+      return res.status(400).json({ success: false, error: 'tenantId and message are required' });
+    }
+
+    const customerHandler = require('./routes/handlers/customerHandler');
+
+    const formattedReq = {
+      body: {
+        tenant_id: String(tenantId),
+        customer_phone: phone ? String(phone) : '919000000000',
+        customer_message: String(message)
+      }
+    };
+
+    const handlerMeta = { status: null, json: null };
+    const formattedRes = {
+      status: (code) => ({
+        json: (data) => {
+          handlerMeta.status = code;
+          handlerMeta.json = data;
+          return data;
+        }
+      }),
+      json: (data) => {
+        handlerMeta.status = handlerMeta.status || 200;
+        handlerMeta.json = data;
+        return data;
+      }
+    };
+
+    // Capture outbound messages (main handler normally sends via Maytapi)
+    const prevDesktop = !!global.desktopAgentMode;
+    const prevCaptured = global.capturedMessage;
+    const prevCapturedMessages = global.capturedMessages;
+    global.desktopAgentMode = true;
+    global.capturedMessage = null;
+    global.capturedMessages = [];
+
+    try {
+      await customerHandler.handleCustomerTextMessage(formattedReq, formattedRes);
+    } finally {
+      // Restore globals after handler finishes
+      const outgoing = Array.isArray(global.capturedMessages) && global.capturedMessages.length
+        ? global.capturedMessages
+        : (global.capturedMessage ? [global.capturedMessage] : []);
+
+      global.desktopAgentMode = prevDesktop;
+      global.capturedMessage = prevCaptured;
+      global.capturedMessages = prevCapturedMessages;
+
+      return res.json({
+        success: true,
+        outgoing,
+        handler: handlerMeta
+      });
+    }
+  } catch (error) {
+    console.error('[TEST] preview-customer-handler error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to preview customer handler reply' });
+  }
+});
+
+// 5. Preview full response (smart router + AI fallback, no WhatsApp send)
+app.post('/api/test/preview-full-response', async (req, res) => {
+  try {
+    const { tenantId, phone, message } = req.body || {};
+    if (!tenantId || !message) {
+      return res.status(400).json({ success: false, error: 'tenantId and message are required' });
+    }
+
+    const { getSmartResponse } = require('./services/smartResponseRouter');
+    const smart = await getSmartResponse(String(message), String(tenantId), phone ? String(phone) : null);
+    if (smart && smart.response) {
+      return res.json({ success: true, source: smart.source || 'smart_router', result: smart });
+    }
+
+    // AI fallback (best effort). If OpenAI is unavailable/quota-limited, fall back to local text search.
+    try {
+      const { openai } = require('./services/config');
+      const ai = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are a helpful sales assistant. If you do not have enough info, ask a short clarifying question.' },
+          { role: 'user', content: String(message) }
+        ],
+        temperature: 0.2,
+        max_tokens: 500
+      });
+
+      const responseText = ai?.choices?.[0]?.message?.content?.trim() || '';
+      return res.json({ success: true, source: 'ai_fallback', result: { response: responseText } });
+    } catch (aiErr) {
+      console.warn('[TEST] AI fallback unavailable, using local search:', aiErr?.message || aiErr);
+      const { supabase } = require('./services/config');
+      const needle = String(message || '').trim().slice(0, 120);
+
+      // Local SQLite wrapper doesn't reliably support PostgREST-style `.or()` and `.ilike()`.
+      // Fetch a small candidate set and filter in JS for portability.
+      const needleLower = needle.toLowerCase();
+      const safeIncludes = (haystack) => String(haystack || '').toLowerCase().includes(needleLower);
+
+      const [docsRes, productsRes, websiteRes] = await Promise.all([
+        supabase
+          .from('tenant_documents')
+          .select('original_name, filename, extracted_text')
+          .eq('tenant_id', String(tenantId))
+          .limit(50),
+        supabase
+          .from('products')
+          .select('name, description, price')
+          .eq('tenant_id', String(tenantId))
+          .limit(200),
+        supabase
+          .from('website_embeddings')
+          .select('content, chunk_text, source_url, url, page_title')
+          .eq('tenant_id', String(tenantId))
+          .limit(200)
+      ]);
+
+      const docs = (docsRes?.data || []).filter((d) =>
+        safeIncludes(d.original_name) || safeIncludes(d.filename) || safeIncludes(d.extracted_text)
+      ).slice(0, 2);
+
+      const products = (productsRes?.data || []).filter((p) =>
+        safeIncludes(p.name) || safeIncludes(p.description)
+      ).slice(0, 3);
+
+      const pages = (websiteRes?.data || []).filter((p) =>
+        safeIncludes(p.page_title) || safeIncludes(p.url) || safeIncludes(p.source_url) || safeIncludes(p.chunk_text) || safeIncludes(p.content)
+      ).slice(0, 2);
+
+      let response = '';
+      if (products.length) {
+        response += 'Products I found:\n';
+        for (const p of products) {
+          response += `- ${p.name}${p.price ? ` (₹${p.price})` : ''}${p.description ? `: ${String(p.description).slice(0, 120)}` : ''}\n`;
+        }
+        response += '\n';
+      }
+      if (docs.length) {
+        response += 'From uploaded documents:\n';
+        docs.forEach((d, i) => {
+          const name = d.original_name || d.filename || `document ${i + 1}`;
+          const snippet = String(d.extracted_text || '').trim().slice(0, 300);
+          response += `- ${name}: ${snippet}${snippet ? '…' : ''}\n`;
+        });
+        response += '\n';
+      }
+      if (pages.length) {
+        response += 'From website indexing:\n';
+        pages.forEach((p, i) => {
+          const snippet = String(p.content || '').trim().slice(0, 300);
+          response += `- Source ${i + 1}: ${snippet}${snippet ? '…' : ''}${p.source_url ? `\n  ${p.source_url}` : ''}\n`;
+        });
+        response += '\n';
+      }
+
+      if (!response) {
+        response = 'No matching information found locally. (AI is currently unavailable.)';
+      }
+
+      return res.json({
+        success: true,
+        source: 'local_fallback',
+        result: { response }
+      });
+    }
+  } catch (error) {
+    console.error('[TEST] preview-full-response error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to preview full response' });
   }
 });
 

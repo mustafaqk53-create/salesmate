@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAK Feature: Orders</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/features/_shared.css" />
+</head>
+<body class="min-h-screen">
+  <section class="gradient-bg py-12">
+    <div class="container mx-auto px-6">
+      <div class="flex items-center justify-between">
+        <a href="/" class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(0, 230, 118, 0.16); border: 1px solid rgba(0, 230, 118, 0.26);">
+            <i class="fab fa-whatsapp" style="color: var(--success);"></i>
+          </div>
+          <div>
+            <div class="font-extrabold tracking-tight text-white">SAK</div>
+            <div class="text-xs muted-2">WhatsApp AI Sales Assistant</div>
+          </div>
+        </a>
+        <div class="hidden md:flex items-center gap-2">
+          <a href="/#features" class="nav-link">Features</a>
+          <a href="/login.html" class="nav-link">Login</a>
+        </div>
+      </div>
+
+      <div class="mt-10">
+        <div class="breadcrumb text-sm muted-2">
+          <a href="/">Home</a> <span class="mx-2">/</span> <a href="/#features">Features</a> <span class="mx-2">/</span> <span class="text-white">Orders</span>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black text-white mt-4">Orders</h1>
+        <p class="text-lg muted mt-3 max-w-3xl">Create, track, and manage orders created from WhatsApp conversations—so nothing is lost in chat history.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16" style="background: #0f0518;">
+    <div class="container mx-auto px-6">
+      <div class="grid lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2">
+          <div class="card p-8">
+            <h2 class="text-2xl font-extrabold text-white">What it does</h2>
+            <p class="muted mt-3">The Orders module centralizes order creation and tracking. Orders can be created from WhatsApp flow and reviewed or updated by your team in the dashboard.</p>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Key capabilities</h3>
+            <ul class="mt-3 space-y-2 muted">
+              <li>• View and manage orders per tenant with consistent status handling.</li>
+              <li>• Connect orders to customers and products for reporting and follow-ups.</li>
+              <li>• Support pricing rules/discount logic used by chat quoting.</li>
+              <li>• Optional downstream sync via integrations (ex: Zoho Books).</li>
+            </ul>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Typical flow</h3>
+            <ol class="mt-3 space-y-2 muted">
+              <li>1) Customer asks to order and confirms items/quantities.</li>
+              <li>2) System creates an order record linked to the conversation/customer.</li>
+              <li>3) Team reviews and moves order through processing steps in dashboard.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div>
+          <div class="card p-8">
+            <h3 class="text-xl font-extrabold text-white">Related features</h3>
+            <div class="mt-4 space-y-2">
+              <a class="menu-item" href="/features/customers.html"><div class="menu-title">Customers</div><div class="menu-desc">Profiles and addresses for fulfillment</div></a>
+              <a class="menu-item" href="/features/products.html"><div class="menu-title">Products</div><div class="menu-desc">Accurate pricing and items</div></a>
+              <a class="menu-item" href="/features/zoho.html"><div class="menu-title">Zoho Integration</div><div class="menu-desc">Optional order/invoice sync</div></a>
+            </div>
+            <div class="mt-8">
+              <button class="btn-primary w-full" onclick="window.location.href='/login.html'">Open Dashboard</button>
+              <button class="btn-secondary w-full mt-3" onclick="window.location.href='/'">Back to Home</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/features/_layout.js"></script>
+</body>
+</html>

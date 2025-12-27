@@ -9,6 +9,7 @@ class MemoryManager {
     try {
       console.log(`[Memory] Saving conversation for ${phoneNumber}`);
       const conversationData = {
+        phone_number: phoneNumber,
         end_user_phone: phoneNumber,  // ✅ CORRECT for conversations table
         tenant_id: tenantId,
         context_data: context,  // Use context_data not context

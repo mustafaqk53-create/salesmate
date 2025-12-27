@@ -8,6 +8,7 @@ const { supabase } = require('./config');
 const { 
     generateFreeEmbedding, 
     generateFreeEmbeddingsBatch,
+    generateSmartEmbedding,
     EMBEDDING_DIMENSION 
 } = require('./freeEmbeddingService');
 
@@ -82,15 +83,24 @@ function chunkText(text, options = {}) {
  */
 async function generateEmbedding(text, model = null) {
     try {
+        // Prefer free embeddings by default (Hugging Face / local USE model).
+        // Opt into OpenAI embeddings only if explicitly enabled.
+        const useOpenAI = String(process.env.USE_OPENAI_EMBEDDINGS || '').toLowerCase() === 'true';
+
+        if (!useOpenAI) {
+            const embedding = await generateSmartEmbedding(text);
+            if (Array.isArray(embedding) && embedding.length) {
+                return embedding;
+            }
+        }
+
         const { openai } = require('./config');
-        
-        // Use OpenAI text-embedding-3-small (very cheap: $0.02 per 1M tokens)
         const response = await openai.embeddings.create({
             model: 'text-embedding-3-small',
-            input: text.slice(0, 8000), // Limit to 8K chars (~2K tokens)
-            dimensions: 384 // Match our database vector size
+            input: text.slice(0, 8000),
+            dimensions: 384
         });
-        
+
         const embedding = response.data[0].embedding;
         console.log(`[EmbeddingService] Generated OpenAI embedding with ${embedding.length} dimensions`);
         return embedding;
@@ -109,13 +119,20 @@ async function generateEmbedding(text, model = null) {
  */
 async function generateEmbeddingsBatch(texts, model = null) {
     try {
-        // Use OpenAI for all embeddings (batch process sequentially)
+        const useOpenAI = String(process.env.USE_OPENAI_EMBEDDINGS || '').toLowerCase() === 'true';
+        if (!useOpenAI) {
+            const embeddings = await generateFreeEmbeddingsBatch(texts);
+            console.log(`[EmbeddingService] Generated ${embeddings.length} free embeddings`);
+            return embeddings;
+        }
+
+        // OpenAI fallback (sequential)
         const embeddings = [];
         for (const text of texts) {
             const embedding = await generateEmbedding(text);
             embeddings.push(embedding);
         }
-        
+
         console.log(`[EmbeddingService] Generated ${embeddings.length} OpenAI embeddings`);
         return embeddings;
 
@@ -152,21 +169,38 @@ async function processWebsiteContent(crawledData, tenantId) {
         // Detect content type
         const contentType = detectContentType(crawledData.url, crawledData.pageTitle);
 
-        // Prepare records for database
+        const nowIso = new Date().toISOString();
+        const url = crawledData.url;
+
+        // Prepare records for database (compatible with both Postgres and local SQLite)
         const records = chunks.map((chunk, index) => ({
             tenant_id: tenantId,
-            url: crawledData.url,
+            // Legacy/local schema
+            content: chunk.text, // local SQLite has NOT NULL content
+            source_url: url,
+            metadata: JSON.stringify({
+                url,
+                page_title: crawledData.pageTitle,
+                content_type: contentType,
+                chunk_index: chunk.index,
+                product_codes: crawledData.productCodes || [],
+                keywords: extractKeywords(chunk.text)
+            }),
+
+            // New schema used by the website search/list endpoints
+            url,
             page_title: crawledData.pageTitle,
             content_type: contentType,
             original_content: crawledData.content,
             chunk_text: chunk.text,
             chunk_index: chunk.index,
-            embedding: `[${embeddings[index].join(',')}]`, // pgvector format: stringify array
-            product_codes: crawledData.productCodes || [],
-            keywords: extractKeywords(chunk.text),
+            // Store as JSON array string; search service does JSON.parse() and computes cosine similarity.
+            embedding: JSON.stringify(embeddings[index]),
+            product_codes: JSON.stringify(crawledData.productCodes || []),
+            keywords: JSON.stringify(extractKeywords(chunk.text)),
             status: 'active',
-            crawl_date: new Date(),
-            last_updated: new Date()
+            crawl_date: nowIso,
+            last_updated: nowIso
         }));
 
         // Store in database

@@ -34,6 +34,7 @@ const getConversationId = async (tenantId, endUserPhone) => {
             .from('conversations')
             .insert({
                 tenant_id: tenantId,
+                phone_number: endUserPhone,
                 end_user_phone: endUserPhone
             })
             .select('id')
@@ -64,14 +65,21 @@ const logMessage = async (tenantId, endUserPhone, sender, messageBody, messageTy
             throw new Error('Could not retrieve conversation ID for logging.');
         }
 
+        const payload = {
+            conversation_id: conversationId,
+            sender: sender,
+            message_body: messageBody,
+            message_type: messageType // Save the message type
+        };
+
+        // Local SQLite analytics filters by tenant_id.
+        if (process.env.USE_LOCAL_DB === 'true') {
+            payload.tenant_id = tenantId;
+        }
+
         const { error } = await supabase
             .from('messages')
-            .insert({
-                conversation_id: conversationId,
-                sender: sender,
-                message_body: messageBody,
-                message_type: messageType // Save the message type
-            });
+            .insert(payload);
 
         if (error) throw error;
 

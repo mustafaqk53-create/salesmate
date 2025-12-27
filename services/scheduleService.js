@@ -56,12 +56,16 @@ const processContactSheet = async (tenantId, mediaUrl, message, tenantPhone, cam
 
         const schedules = phoneNumbers.map(phone => ({
             tenant_id: tenantId,
+            name: campaignName,
             to_phone_number: phone,
+            message_text: message,
             message_body: message,
             media_url: imageUrl,
             scheduled_at: sendAt, // Use the provided send time
             campaign_id: campaignId,
             campaign_name: campaignName,
+            status: 'pending',
+            retry_count: 0,
         }));
 
         const { error } = await supabase.from('bulk_schedules').insert(schedules);

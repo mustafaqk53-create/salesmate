@@ -24,6 +24,12 @@ router.post('/register', async (req, res) => {
             bot_language
         } = req.body;
 
+        const normalizePhoneDigits = (value) => {
+            if (!value) return '';
+            const withoutSuffix = String(value).replace(/@c\.us$/i, '');
+            return withoutSuffix.replace(/\D/g, '');
+        };
+
         // Validation
         if (!business_name || !owner_whatsapp_number) {
             return res.status(400).json({
@@ -31,11 +37,23 @@ router.post('/register', async (req, res) => {
             });
         }
 
+        const ownerDigits = normalizePhoneDigits(owner_whatsapp_number);
+        const phoneDigits = normalizePhoneDigits(phone_number || owner_whatsapp_number);
+        if (!ownerDigits) {
+            return res.status(400).json({
+                error: 'WhatsApp number is invalid'
+            });
+        }
+
+        // Store consistently: phone_number as digits; owner_whatsapp_number as WhatsApp JID-like value.
+        const normalizedPhoneNumber = phoneDigits || ownerDigits;
+        const normalizedOwnerWhatsApp = `${ownerDigits}@c.us`;
+
         // Check if tenant already exists
         const { data: existing } = await supabase
             .from('tenants')
             .select('id, business_name, subscription_status')
-            .eq('owner_whatsapp_number', owner_whatsapp_number)
+            .eq('owner_whatsapp_number', normalizedOwnerWhatsApp)
             .single();
 
         if (existing) {
@@ -61,8 +79,8 @@ router.post('/register', async (req, res) => {
             .from('tenants')
             .insert({
                 business_name,
-                owner_whatsapp_number,
-                phone_number,
+                owner_whatsapp_number: normalizedOwnerWhatsApp,
+                phone_number: normalizedPhoneNumber,
                 business_address,
                 business_website,
                 industry_type,
@@ -73,13 +91,13 @@ router.post('/register', async (req, res) => {
                 referral_code: referralCode,
                 status: 'active',
                 is_active: true,
-                bot_phone_number: owner_whatsapp_number, // Default to owner's number
+                bot_phone_number: normalizedOwnerWhatsApp, // Default to owner's number
                 currency_symbol: '₹',
                 default_packaging_unit: 'piece',
                 daily_summary_enabled: true,
                 abandoned_cart_delay_hours: 2,
                 abandoned_cart_message: "Hello! It looks like you left some items in your shopping cart. Would you like to complete your purchase?",
-                admin_phones: [owner_whatsapp_number]
+                admin_phones: [normalizedOwnerWhatsApp]
             })
             .select()
             .single();

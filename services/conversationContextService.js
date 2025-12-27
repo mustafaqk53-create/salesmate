@@ -12,6 +12,7 @@ const saveConversationContext = async (tenantId, phoneNumber, context) => {
             .from('conversations')
             .upsert({
                 tenant_id: tenantId,
+                phone_number: phoneNumber,
                 end_user_phone: phoneNumber,
                 // REMOVED: conversation_context field (doesn't exist in schema)
                 last_product_discussed: context.lastProduct, // Use existing column name

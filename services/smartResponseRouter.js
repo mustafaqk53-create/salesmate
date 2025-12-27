@@ -2,6 +2,43 @@ const { supabase } = require('./config');
 const { formatPersonalizedPriceDisplay, createPriceMessage } = require('./pricingDisplayService');
 const { searchWebsiteForQuery, isProductInfoQuery } = require('./websiteContentIntegration');
 
+async function buildTenantDocumentsContext(tenantId, userQuery, { limit = 2 } = {}) {
+    try {
+        const q = String(userQuery || '').trim();
+        if (!tenantId || q.length < 3) return null;
+
+        const needle = q.slice(0, 120).replace(/%/g, '').trim();
+        if (!needle) return null;
+
+        const { data: docs, error } = await supabase
+            .from('tenant_documents')
+            .select('id, original_name, filename, extracted_text, created_at')
+            .eq('tenant_id', tenantId)
+            .or(`original_name.ilike.%${needle}%,filename.ilike.%${needle}%,extracted_text.ilike.%${needle}%`)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.error('[SMART_ROUTER][DOCS] Search error:', error.message || error);
+            return null;
+        }
+
+        const rows = (docs || []).filter(d => (d.extracted_text || '').trim().length > 0);
+        if (!rows.length) return null;
+
+        const snippets = rows.map((d, idx) => {
+            const name = d.original_name || d.filename || 'document';
+            const text = String(d.extracted_text || '').trim().slice(0, 1500);
+            return `[Document ${idx + 1}: ${name}]\n${text}`;
+        }).join('\n\n---\n\n');
+
+        return `--- TENANT DOCUMENTS (Uploaded Knowledge) ---\n${snippets}\n--- END TENANT DOCUMENTS ---`;
+    } catch (e) {
+        console.error('[SMART_ROUTER][DOCS] Build context failed:', e?.message || e);
+        return null;
+    }
+}
+
 /**
  * 🤖 AI INTELLIGENCE LAYER
  * Analyzes queries without hardcoded patterns
@@ -823,6 +860,76 @@ const handlePriceQueriesFixed = async (query, tenantId, phoneNumber = null) => {
 const getSmartResponse = async (userQuery, tenantId, phoneNumber = null) => {
     console.log('[SMART_ROUTER] AI-powered processing for:', userQuery);
     console.log('[SMART_ROUTER] Customer phone:', phoneNumber || 'Not provided');
+
+    // Fast-path: greetings (prevents clarification loop on simple salutations)
+    try {
+        const q0 = String(userQuery || '').toLowerCase().trim();
+        if (q0 && /^(hi|hello|hey|hii|hiii|good\s*(morning|afternoon|evening))$/.test(q0)) {
+            console.log('[SMART_ROUTER][FASTPATH] Greeting detected');
+            return {
+                response: `Hi! How can I help you today?\n\nYou can say things like:\n1. "Show me your products"\n2. "Price of <product name>"\n3. "Add <product> 2 cartons"\n4. "View my cart"`,
+                source: 'greeting'
+            };
+        }
+    } catch (e) {
+        // ignore
+    }
+
+    // Fast-path: product catalog / product overview queries.
+    // Avoids falling into clarification loops when the user clearly asks what products are available.
+    try {
+        const q = String(userQuery || '').toLowerCase().trim();
+        const looksLikeCatalogQuery = (
+            q === 'catalog' ||
+            q === 'products' ||
+            q === 'product list' ||
+            /\b(products?|catalog|items)\b/.test(q) && /\b(have|available|show|list|what|wha|which|menu)\b/.test(q)
+        );
+
+        if (looksLikeCatalogQuery && tenantId) {
+            console.log('[SMART_ROUTER][FASTPATH] Catalog query detected');
+            const { data: products, error } = await supabase
+                .from('products')
+                .select('id, name, sku, description, price, packaging_unit, units_per_carton')
+                .eq('tenant_id', tenantId)
+                .order('created_at', { ascending: false })
+                .limit(15);
+
+            if (error) {
+                console.error('[SMART_ROUTER][CATALOG] Fetch error:', error.message || error);
+            }
+
+            const rows = Array.isArray(products) ? products : [];
+            if (!rows.length) {
+                return {
+                    response: `We don't have any products uploaded in the catalog right now.\n\nPlease ask the admin to upload the product list, or tell me what item you need and I’ll help you.`,
+                    source: 'catalog_empty'
+                };
+            }
+
+            let msg = `Here are some products we have:\n\n`;
+            for (const p of rows) {
+                const name = (p.name || 'Unnamed product').toString().trim();
+                const sku = (p.sku || '').toString().trim();
+                const price = (p.price !== null && p.price !== undefined && p.price !== '') ? `₹${Number(p.price)}` : null;
+                const unit = (p.packaging_unit || 'carton').toString().trim();
+                const upc = p.units_per_carton ? ` (${p.units_per_carton} pcs/carton)` : '';
+                msg += `• *${name}*`;
+                if (sku) msg += ` (SKU: ${sku})`;
+                if (price) msg += ` — ${price}/${unit}${upc}`;
+                msg += `\n`;
+            }
+            msg += `\nReply with a product name/SKU and quantity (e.g., "${rows[0].sku || rows[0].name} 5 cartons"), or ask "price of ${rows[0].sku || rows[0].name}".`;
+
+            return {
+                response: msg,
+                source: 'catalog_list'
+            };
+        }
+    } catch (e) {
+        console.error('[SMART_ROUTER][CATALOG] Fast-path failed:', e?.message || e);
+        // Continue to AI layer
+    }
     
     // ============================================
     // 🆕 NEW: AI INTELLIGENCE LAYER (ZERO HARDCODING)
@@ -1283,6 +1390,55 @@ Respond in JSON format:
         } catch (websiteError) {
             console.error('[SMART_ROUTER] Website search error:', websiteError.message);
         }
+    }
+
+    // FINAL FALLBACK (Knowledge): Use uploaded tenant documents (and optional website context) to answer.
+    try {
+        const { openai } = require('./config');
+        const docsContext = await buildTenantDocumentsContext(tenantId, userQuery, { limit: 2 });
+
+        // Only fetch website context when it looks like product/info query
+        let websiteContextBlock = null;
+        if (isProductInfoQuery(userQuery)) {
+            const websiteResults = await searchWebsiteForQuery(userQuery, tenantId);
+            if (websiteResults && websiteResults.length > 0) {
+                websiteContextBlock = `--- WEBSITE INDEXING (Crawled Content) ---\n${websiteResults
+                    .slice(0, 3)
+                    .map((r, i) => `[Source ${i + 1}: ${r.pageTitle || r.page_title || 'Website'}]\n${String(r.content || r.chunk_text || '').slice(0, 1500)}\n${r.url ? `URL: ${r.url}` : ''}`)
+                    .join('\n\n---\n\n')}\n--- END WEBSITE INDEXING ---`;
+            }
+        }
+
+        if (docsContext || websiteContextBlock) {
+            const kbResponse = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a helpful sales assistant. Answer the user's question using ONLY the context provided.
+If the context does not contain the answer, ask a short clarifying question or say you don't have that information.
+Do not invent details.`
+                    },
+                    {
+                        role: 'user',
+                        content: `${docsContext ? docsContext + '\n\n' : ''}${websiteContextBlock ? websiteContextBlock + '\n\n' : ''}User Question: ${userQuery}`
+                    }
+                ],
+                temperature: 0.2,
+                max_tokens: 600
+            });
+
+            const answer = kbResponse?.choices?.[0]?.message?.content?.trim();
+            if (answer) {
+                return {
+                    response: answer,
+                    source: 'ai_knowledge_fallback',
+                    aiPowered: true
+                };
+            }
+        }
+    } catch (error) {
+        console.error('[SMART_ROUTER][KB] Knowledge fallback error:', error?.message || error);
     }
 
     console.log('[SMART_ROUTER_DEBUG] NO RESPONSE FOUND - returning null');

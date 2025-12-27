@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAK Feature: Follow-ups</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/features/_shared.css" />
+</head>
+<body class="min-h-screen">
+  <section class="gradient-bg py-12">
+    <div class="container mx-auto px-6">
+      <div class="flex items-center justify-between">
+        <a href="/" class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(0, 230, 118, 0.16); border: 1px solid rgba(0, 230, 118, 0.26);">
+            <i class="fab fa-whatsapp" style="color: var(--success);"></i>
+          </div>
+          <div>
+            <div class="font-extrabold tracking-tight text-white">SAK</div>
+            <div class="text-xs muted-2">WhatsApp AI Sales Assistant</div>
+          </div>
+        </a>
+        <div class="hidden md:flex items-center gap-2">
+          <a href="/#features" class="nav-link">Features</a>
+          <a href="/login.html" class="nav-link">Login</a>
+        </div>
+      </div>
+
+      <div class="mt-10">
+        <div class="breadcrumb text-sm muted-2">
+          <a href="/">Home</a> <span class="mx-2">/</span> <a href="/#features">Features</a> <span class="mx-2">/</span> <span class="text-white">Follow-ups</span>
+        </div>
+        <h1 class="text-4xl md:text-5xl font-black text-white mt-4">Follow-ups</h1>
+        <p class="text-lg muted mt-3 max-w-3xl">Convert ongoing chats into a structured pipeline—schedule next actions, track status, and move leads into Customers.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16" style="background: #0f0518;">
+    <div class="container mx-auto px-6">
+      <div class="grid lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2">
+          <div class="card p-8">
+            <h2 class="text-2xl font-extrabold text-white">What it does</h2>
+            <p class="muted mt-3">Follow-ups ensure every interested customer gets a next step. Your team can schedule, update, and close follow-ups directly from the dashboard.</p>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Key capabilities</h3>
+            <ul class="mt-3 space-y-2 muted">
+              <li>• Create follow-ups from conversations and keep a clear queue.</li>
+              <li>• Track status (pending/completed) so nothing is forgotten.</li>
+              <li>• Add a follow-up contact directly into Customers for long-term CRM.</li>
+              <li>• Keep history and context aligned with chat activity.</li>
+            </ul>
+
+            <h3 class="text-xl font-extrabold text-white mt-8">Typical flow</h3>
+            <ol class="mt-3 space-y-2 muted">
+              <li>1) Customer asks for quote or shows buying intent.</li>
+              <li>2) Team schedules a follow-up with notes.</li>
+              <li>3) Follow-up is completed or converted into an order/customer record.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div>
+          <div class="card p-8">
+            <h3 class="text-xl font-extrabold text-white">Related features</h3>
+            <div class="mt-4 space-y-2">
+              <a class="menu-item" href="/features/customers.html"><div class="menu-title">Customers</div><div class="menu-desc">Save lead profiles for re-marketing</div></a>
+              <a class="menu-item" href="/features/broadcasts.html"><div class="menu-title">Broadcast</div><div class="menu-desc">Follow-ups after campaigns</div></a>
+              <a class="menu-item" href="/features/orders.html"><div class="menu-title">Orders</div><div class="menu-desc">Close leads into orders</div></a>
+            </div>
+            <div class="mt-8">
+              <button class="btn-primary w-full" onclick="window.location.href='/login.html'">Open Dashboard</button>
+              <button class="btn-secondary w-full mt-3" onclick="window.location.href='/'">Back to Home</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/features/_layout.js"></script>
+</body>
+</html>

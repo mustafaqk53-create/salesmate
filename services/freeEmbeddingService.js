@@ -27,42 +27,75 @@ const EMBEDDING_DIMENSION = MODELS[DEFAULT_MODEL];
  */
 async function generateFreeEmbedding(text, model = DEFAULT_MODEL) {
     try {
-        // NEW Hugging Face Inference Providers API endpoint (updated Nov 2025)
-        const API_URL = `https://router.huggingface.co/hf-inference/models/${model}`;
-        
-        // Get API token from env (free tier available)
+        // Hugging Face inference endpoints vary by account/provider.
+        // Try a small set of known-compatible endpoints in order.
+        const API_URLS = [
+            // Most reliable for embeddings/feature-extraction
+            `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
+            // Legacy models endpoint
+            `https://api-inference.huggingface.co/models/${model}`,
+            // Router endpoint (may require token / provider enablement)
+            `https://router.huggingface.co/hf-inference/models/${model}`
+        ];
+
+        // Get API token from env (optional; some endpoints allow anonymous but may rate-limit)
         const HF_TOKEN = process.env.HUGGINGFACE_API_KEY || '';
 
         // Truncate text if too long (model limit is typically 512 tokens)
         const truncatedText = text.slice(0, 5000);
 
-        const response = await axios.post(
-            API_URL,
-            {
-                inputs: truncatedText
-            },
-            {
-                headers: HF_TOKEN ? {
-                    'Authorization': `Bearer ${HF_TOKEN}`,
-                    'Content-Type': 'application/json'
-                } : {
-                    'Content-Type': 'application/json'
-                },
-                timeout: 30000 // 30 second timeout
-            }
-        );
+        const headers = HF_TOKEN
+            ? { 'Authorization': `Bearer ${HF_TOKEN}`, 'Content-Type': 'application/json' }
+            : { 'Content-Type': 'application/json' };
 
-        // HF returns nested array, flatten it
-        let embedding = response.data;
-        
-        // Handle different response formats
-        if (Array.isArray(embedding[0])) {
-            // Mean pooling if we get multiple vectors
-            embedding = meanPooling(embedding);
+        let lastError = null;
+        for (const API_URL of API_URLS) {
+            try {
+                const response = await axios.post(
+                    API_URL,
+                    {
+                        inputs: truncatedText,
+                        options: { wait_for_model: true }
+                    },
+                    {
+                        headers,
+                        timeout: 30000
+                    }
+                );
+
+                // HF returns nested arrays (tokens x dim) or already pooled vector.
+                let embedding = response.data;
+                if (Array.isArray(embedding) && Array.isArray(embedding[0])) {
+                    embedding = meanPooling(embedding);
+                }
+
+                if (!Array.isArray(embedding) || embedding.length === 0) {
+                    throw new Error('Invalid embedding response format');
+                }
+
+                console.log(`[FreeEmbedding] Generated ${embedding.length}D embedding using ${model}`);
+                return embedding;
+            } catch (err) {
+                lastError = err;
+                const status = err?.response?.status;
+
+                // Token-required endpoints commonly return 401/403.
+                if ((status === 401 || status === 403) && !HF_TOKEN) {
+                    // Keep trying other endpoints, but remember why.
+                }
+
+                // For 400/404 on one endpoint, try the next.
+                continue;
+            }
         }
 
-        console.log(`[FreeEmbedding] Generated ${embedding.length}D embedding using ${model}`);
-        return embedding;
+        // If all endpoints fail, surface a helpful error.
+        const status = lastError?.response?.status;
+        if ((status === 401 || status === 403) && !HF_TOKEN) {
+            throw new Error('Hugging Face embeddings require HUGGINGFACE_API_KEY in this environment');
+        }
+
+        throw lastError;
 
     } catch (error) {
         console.error('[FreeEmbedding] Error:', error.message);

@@ -4,6 +4,7 @@
  * and the database to provide intelligent, context-aware responses.
  */
 const { openai, supabase } = require('./config');
+const { searchProducts } = require('./productService');
 
 /**
  * Creates a vector embedding for a given text using OpenAI's API.
@@ -26,27 +27,24 @@ const createEmbedding = async (text) => {
 /**
  * Matches a user's query to the most relevant products in the database using vector search.
  * @param {string} tenantId The ID of the tenant whose products to search.
- * @param {number[]} queryEmbedding The vector embedding of the user's query.
+ * @param {string} userQuery The user's query.
  * @returns {Promise<string>} A promise that resolves to the formatted product context.
  */
-const getContextFromDB = async (tenantId, queryEmbedding) => {
+const getContextFromDB = async (tenantId, userQuery) => {
     try {
-        const { data, error } = await supabase.rpc('match_products', {
-            tenant_id_param: tenantId,
-            query_embedding: queryEmbedding,
-            match_threshold: 0.78,
-            match_count: 3
-        });
+        // Prefer the productService search helper because it already handles
+        // vector search + safe fallbacks (works in both Supabase and local SQLite).
+        const products = await searchProducts(tenantId, String(userQuery || ''), 3);
 
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            return "No relevant product information found.";
+        if (!products || products.length === 0) {
+            return 'No relevant product information found.';
         }
 
-        return data.map(product =>
-            `Product Name: ${product.name}\nDescription: ${product.description}\nPrice: ${product.price}`
-        ).join('\n\n');
+        return products
+            .map(product =>
+                `Product Name: ${product.name}\nDescription: ${product.description || ''}\nPrice: ${product.price}`
+            )
+            .join('\n\n');
 
     } catch (error) {
         console.error('Error retrieving context from database:', error.message);
@@ -71,11 +69,8 @@ const getAIResponse = async (tenantId, userQuery) => {
 
         if (tenantError) throw tenantError;
 
-        // 2. Create an embedding for the user's query
-        const queryEmbedding = await createEmbedding(userQuery);
-
-        // 3. Get relevant product context from the database
-        const productContext = await getContextFromDB(tenantId, queryEmbedding);
+        // 2. Get relevant product context from the database
+        const productContext = await getContextFromDB(tenantId, userQuery);
 
         // 4. Create the business profile context
         let businessProfileContext = "--- BUSINESS PROFILE ---\n";
@@ -213,7 +208,7 @@ async function getAIResponseV2(tenantId, userQuery, opts = {}) {
     }
 
     // (c) Product context via your existing function
-    const productContext = await getContextFromDB(tenantId, queryEmbedding);
+    const productContext = await getContextFromDB(tenantId, userQuery);
 
     // (d) Business profile block (re-using your structure)
     let businessProfileContext = "--- BUSINESS PROFILE ---\n";

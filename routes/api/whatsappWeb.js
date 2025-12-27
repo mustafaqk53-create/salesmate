@@ -9,6 +9,16 @@ const {
     getAllConnections
 } = require('../../services/whatsappWebService');
 
+function setNoCacheJson(res) {
+    // Prevent 304 Not Modified responses (dashboard expects a JSON body).
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    // Force a unique ETag so If-None-Match never matches.
+    res.set('ETag', String(Date.now()));
+}
+
 /**
  * POST /api/whatsapp-web/connect
  * Initialize WhatsApp Web connection for tenant
@@ -49,6 +59,7 @@ router.post('/connect', async (req, res) => {
  */
 router.get('/qr/:tenantId', async (req, res) => {
     try {
+        setNoCacheJson(res);
         const { tenantId } = req.params;
 
         const result = getQRCode(tenantId);
@@ -74,6 +85,7 @@ router.get('/qr/:tenantId', async (req, res) => {
  */
 router.get('/status/:tenantId', async (req, res) => {
     try {
+        setNoCacheJson(res);
         const { tenantId } = req.params;
 
         // Set response timeout to prevent hanging

@@ -16,7 +16,13 @@ const sendMessage = async (to, text) => {
     // Check if we're in desktop agent mode - if so, capture instead of sending
     if (global.desktopAgentMode) {
         console.log('[WHATSAPP_SERVICE] Desktop agent mode - capturing message instead of sending');
+        // Preserve legacy single-message behavior
         global.capturedMessage = text;
+        // Also support multi-message capture (WhatsApp Web / WAHA bridge, etc.)
+        if (!Array.isArray(global.capturedMessages)) {
+            global.capturedMessages = [];
+        }
+        global.capturedMessages.push(text);
         return 'desktop_agent_captured_' + Date.now();
     }
     

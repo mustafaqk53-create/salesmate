@@ -126,8 +126,20 @@ localApp.post('/broadcast', async (req, res) => {
             
             for (const phone of batch) {
                 try {
-                    const cleanPhone = phone.replace(/[^0-9]/g, '');
+                    // Normalize: digits only + add country code if user provided local 10-digit number.
+                    const rawDigits = String(phone).replace(/[^0-9]/g, '');
+                    const agentDigits = String(WHATSAPP_PHONE || '').replace(/[^0-9]/g, '');
+                    const inferredCountryCode = agentDigits.length > 10 ? agentDigits.slice(0, agentDigits.length - 10) : '';
+                    const cleanPhone = (rawDigits.length === 10 && inferredCountryCode)
+                        ? `${inferredCountryCode}${rawDigits}`
+                        : rawDigits;
                     const chatId = `${cleanPhone}@c.us`;
+
+                    // Avoid false "sent" if the number isn't a WhatsApp user
+                    const isRegistered = await global.whatsappClient.isRegisteredUser(chatId);
+                    if (!isRegistered) {
+                        throw new Error('Recipient is not registered on WhatsApp');
+                    }
                     
                     // Handle image + text or text only
                     if (messageType === 'image' && imageBase64) {

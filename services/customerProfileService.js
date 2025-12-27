@@ -1,3 +1,17 @@
+// services/customerProfileService.js
+const { supabase } = require('./config');
+const { normalizePhone, toWhatsAppFormat } = require('../utils/phoneUtils');
+
+const USE_LOCAL_DB = process.env.USE_LOCAL_DB === 'true';
+const CUSTOMER_PHONE_COL = USE_LOCAL_DB ? 'phone_number' : 'phone';
+
+function normalizeCustomerRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const phone = row.phone ?? row.phone_number ?? row.phoneNumber ?? null;
+    const name = row.name ?? row.business_name ?? row.first_name ?? row.customer_name ?? null;
+    return { ...row, phone, name };
+}
+
 /**
  * Search customers by tenantId and optional filters
  * @param {Object} params - { tenantId, phone, name, minSpent, maxSpent, minOrderDate, maxOrderDate }
@@ -10,8 +24,15 @@ async function searchCustomers(params) {
         .select('*')
         .eq('tenant_id', tenantId);
 
-    if (phone) query = query.ilike('phone', `%${phone}%`);
-    if (name) query = query.ilike('first_name', `%${name}%`);
+    if (phone) query = query.ilike(CUSTOMER_PHONE_COL, `%${phone}%`);
+    if (name) {
+        if (USE_LOCAL_DB) {
+            query = query.ilike('name', `%${name}%`);
+        } else {
+            // Postgres: support multiple possible name columns
+            query = query.or(`name.ilike.%${name}%,first_name.ilike.%${name}%,business_name.ilike.%${name}%`);
+        }
+    }
     if (minSpent) query = query.gte('total_spent', minSpent);
     if (maxSpent) query = query.lte('total_spent', maxSpent);
     if (minOrderDate) query = query.gte('last_order_date', minOrderDate);
@@ -19,11 +40,82 @@ async function searchCustomers(params) {
 
     const { data, error } = await query;
     if (error) return { customers: [], error };
-    return { customers: data || [] };
+    return { customers: (data || []).map(normalizeCustomerRow) };
 }
-// services/customerProfileService.js
-const { supabase } = require('./config');
-const { normalizePhone, toWhatsAppFormat } = require('../utils/phoneUtils');
+
+async function getCustomerByPhone(tenantId, rawPhone) {
+    const normalizedPhone = normalizePhone(rawPhone);
+    if (!tenantId || !normalizedPhone) return { customer: null, error: null };
+
+    const { data, error } = await supabase
+        .from('customer_profiles')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq(CUSTOMER_PHONE_COL, normalizedPhone)
+        .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+        return { customer: null, error };
+    }
+    return { customer: data ? normalizeCustomerRow(data) : null, error: null };
+}
+
+async function upsertCustomerByPhone(tenantId, rawPhone, profileData) {
+    const normalizedPhone = normalizePhone(rawPhone);
+    if (!tenantId || !normalizedPhone) {
+        throw new Error('tenantId and phone are required');
+    }
+
+    const allowed = {
+        name: profileData?.name ?? null,
+        email: profileData?.email ?? null,
+        customer_type: profileData?.customer_type ?? null,
+        address: profileData?.address ?? null,
+        city: profileData?.city ?? null,
+        state: profileData?.state ?? null,
+        pincode: profileData?.pincode ?? null,
+        gst_number: profileData?.gst_number ?? null,
+        lead_score: profileData?.lead_score ?? null
+    };
+
+    // Remove null/undefined keys we don't want to overwrite unless explicitly provided
+    Object.keys(allowed).forEach((k) => {
+        if (allowed[k] === undefined) delete allowed[k];
+    });
+
+    const now = new Date().toISOString();
+    const { customer: existing } = await getCustomerByPhone(tenantId, normalizedPhone);
+
+    if (existing && existing.id) {
+        const { data, error } = await supabase
+            .from('customer_profiles')
+            .update({ ...allowed, updated_at: now })
+            .eq('tenant_id', tenantId)
+            .eq('id', existing.id)
+            .select('*')
+            .single();
+
+        if (error) throw error;
+        return normalizeCustomerRow(data);
+    }
+
+    const insertPayload = {
+        tenant_id: tenantId,
+        [CUSTOMER_PHONE_COL]: normalizedPhone,
+        ...allowed,
+        created_at: now,
+        updated_at: now
+    };
+
+    const { data, error } = await supabase
+        .from('customer_profiles')
+        .insert(insertPayload)
+        .select('*')
+        .single();
+
+    if (error) throw error;
+    return normalizeCustomerRow(data);
+}
 
 /**
  * Get customer profile with NORMALIZED phone lookup
@@ -45,7 +137,7 @@ async function getCustomerProfile(tenantId, rawPhone) {
         .from('customer_profiles')
         .select('*')
         .eq('tenant_id', tenantId)
-        .eq('phone', normalizedPhone)  // ✅ Use normalized phone
+        .eq(CUSTOMER_PHONE_COL, normalizedPhone)  // ✅ Use normalized phone
         .maybeSingle();
     
     if (error && error.code !== 'PGRST116') {
@@ -73,25 +165,30 @@ async function upsertCustomerProfile(tenantId, rawPhone, profileData) {
         data: profileData
     });
     
-    const { data, error } = await supabase
-        .from('customer_profiles')
-        .upsert({
-            tenant_id: tenantId,
-            phone: normalizedPhone,  // ✅ Use normalized phone
-            ...profileData,
-            updated_at: new Date().toISOString()
-        }, {
-            onConflict: 'tenant_id,phone'  // Prevent duplicates
-        })
-        .select()
-        .single();
-    
-    if (error) {
-        console.error('[CUSTOMER_PROFILE] Upsert error:', error.message);
-        throw error;
+    // Supabase has upsert; local SQLite wrapper does not.
+    if (!USE_LOCAL_DB && typeof supabase.from('customer_profiles').upsert === 'function') {
+        const { data, error } = await supabase
+            .from('customer_profiles')
+            .upsert({
+                tenant_id: tenantId,
+                [CUSTOMER_PHONE_COL]: normalizedPhone,
+                ...profileData,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'tenant_id,phone'
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[CUSTOMER_PROFILE] Upsert error:', error.message);
+            throw error;
+        }
+        return data;
     }
-    
-    return data;
+
+    // Manual upsert for local mode
+    return await upsertCustomerByPhone(tenantId, normalizedPhone, profileData);
 }
 
 /**
@@ -527,6 +624,8 @@ module.exports = {
     extractNameFromProfile,
     getCustomerProfile,
     upsertCustomerProfile,  // ✅ Export new function
+    getCustomerByPhone,
+    upsertCustomerByPhone,
     batchSyncCustomerProfiles,
     cleanupCustomerNames,
     shouldUpdateCustomerName,

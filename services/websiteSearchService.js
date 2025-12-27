@@ -47,58 +47,52 @@ async function searchWebsiteContent(query, tenantId, options = {}) {
 
     console.log(`[WebsiteSearch] Searching for: "${query}" (tenant: ${tenantId})`);
 
-    try {
-        // Generate embedding for the query
-        const queryEmbedding = await generateEmbedding(query);
-        
-        // Format embedding for pgvector (convert array to string)
-        const embeddingString = `[${queryEmbedding.join(',')}]`;
-
-        // Build query with direct vector similarity
-        let query_builder = supabase
+    const fetchCandidates = async (candidateLimit) => {
+        let qb = supabase
             .from('website_embeddings')
-            .select('id, url, page_title, chunk_text, content_type, embedding')
+            .select('id, url, page_title, chunk_text, content, content_type, embedding')
             .eq('tenant_id', tenantId)
             .eq('status', 'active');
-        
+
         if (contentType) {
-            query_builder = query_builder.eq('content_type', contentType);
+            qb = qb.eq('content_type', contentType);
         }
 
-        const { data, error } = await query_builder.limit(50); // Get more candidates
+        const { data, error } = await qb.limit(candidateLimit);
+        if (error) throw error;
+        return Array.isArray(data) ? data : [];
+    };
 
-        if (error) {
-            throw error;
-        }
+    try {
+        // --- Semantic path (preferred) ---
+        const queryEmbedding = await generateEmbedding(query);
+        const candidates = await fetchCandidates(50);
 
-        // Calculate cosine similarity for each result
-        const resultsWithSimilarity = data.map(item => {
-            const itemEmbedding = JSON.parse(item.embedding);
-            let similarity = cosineSimilarity(queryEmbedding, itemEmbedding);
-            
-            // Boost score for keyword matches in URL/title
-            const queryLower = query.toLowerCase();
-            const urlLower = item.url.toLowerCase();
-            const titleLower = item.page_title.toLowerCase();
-            
-            // Boost for specific keyword matches
-            if (queryLower.includes('product') && (urlLower.includes('/products') || titleLower.includes('range'))) {
-                similarity *= 1.3; // 30% boost for products page when asking about products
-            }
-            if (queryLower.includes('about') && (urlLower.includes('/about') || titleLower.includes('about'))) {
-                similarity *= 1.3; // 30% boost for about page
-            }
-            if (queryLower.includes('contact') && (urlLower.includes('/contact') || titleLower.includes('contact'))) {
-                similarity *= 1.3; // 30% boost for contact page
-            }
-            
-            return {
-                ...item,
-                similarity
-            };
-        });
+        const resultsWithSimilarity = candidates
+            .filter((item) => item && item.embedding)
+            .map(item => {
+                let itemEmbedding;
+                try {
+                    itemEmbedding = JSON.parse(item.embedding);
+                } catch {
+                    itemEmbedding = null;
+                }
+                if (!Array.isArray(itemEmbedding) || !itemEmbedding.length) return null;
 
-        // Filter by minimum similarity, sort by score, and take top results
+                let similarity = cosineSimilarity(queryEmbedding, itemEmbedding);
+
+                const queryLower = query.toLowerCase();
+                const urlLower = String(item.url || '').toLowerCase();
+                const titleLower = String(item.page_title || '').toLowerCase();
+
+                if (queryLower.includes('product') && (urlLower.includes('/products') || titleLower.includes('range'))) similarity *= 1.3;
+                if (queryLower.includes('about') && (urlLower.includes('/about') || titleLower.includes('about'))) similarity *= 1.3;
+                if (queryLower.includes('contact') && (urlLower.includes('/contact') || titleLower.includes('contact'))) similarity *= 1.3;
+
+                return { ...item, similarity };
+            })
+            .filter(Boolean);
+
         const results = resultsWithSimilarity
             .filter(item => item.similarity >= minSimilarity)
             .sort((a, b) => b.similarity - a.similarity)
@@ -107,19 +101,65 @@ async function searchWebsiteContent(query, tenantId, options = {}) {
                 id: item.id,
                 url: item.url,
                 pageTitle: item.page_title,
-                content: item.chunk_text,
+                content: item.chunk_text || item.content || '',
                 contentType: item.content_type,
                 similarity: item.similarity,
                 relevanceScore: Math.round(item.similarity * 100)
             }));
 
-        console.log(`[WebsiteSearch] Found ${results.length} relevant chunks (threshold: ${minSimilarity})`);
-
+        console.log(`[WebsiteSearch] Found ${results.length} relevant chunks (semantic)`);
         return results;
-
     } catch (error) {
-        console.error('[WebsiteSearch] Error searching content:', error.message);
-        throw error;
+        // --- Lexical fallback (works without embeddings) ---
+        console.warn('[WebsiteSearch] Semantic search unavailable, using lexical fallback:', error.message);
+
+        const candidates = await fetchCandidates(200);
+
+        const tokens = String(query)
+            .toLowerCase()
+            .split(/[^a-z0-9]+/g)
+            .filter(t => t && t.length >= 3)
+            .slice(0, 12);
+
+        const scored = candidates
+            .map((item) => {
+                const haystack = (
+                    String(item.page_title || '') + ' ' +
+                    String(item.url || '') + ' ' +
+                    String(item.chunk_text || item.content || '')
+                ).toLowerCase();
+
+                let score = 0;
+                for (const t of tokens) {
+                    if (!t) continue;
+                    if (haystack.includes(t)) score += 1;
+                }
+
+                // Boost title/url hits
+                const titleLower = String(item.page_title || '').toLowerCase();
+                const urlLower = String(item.url || '').toLowerCase();
+                for (const t of tokens) {
+                    if (titleLower.includes(t)) score += 1;
+                    if (urlLower.includes(t)) score += 0.5;
+                }
+
+                return { item, score };
+            })
+            .filter((x) => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit)
+            .map(({ item, score }) => ({
+                id: item.id,
+                url: item.url,
+                pageTitle: item.page_title,
+                content: item.chunk_text || item.content || '',
+                contentType: item.content_type,
+                similarity: null,
+                relevanceScore: Math.min(100, Math.round((score / Math.max(1, tokens.length)) * 100))
+            }));
+
+        console.log(`[WebsiteSearch] Found ${scored.length} relevant chunks (lexical fallback)`);
+        return scored;
     }
 }
 

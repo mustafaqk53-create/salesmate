@@ -6,6 +6,8 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const { supabase } = require('./config');
+const { toWhatsAppFormat } = require('./phoneUtils');
+const puppeteer18 = require('puppeteer18');
 const fs = require('fs');
 const path = require('path');
 
@@ -13,6 +15,52 @@ const path = require('path');
 const clients = new Map();
 const qrCodes = new Map();
 const clientStatus = new Map();
+const tenantCache = new Map();
+
+function safeToString(val) {
+    try {
+        if (typeof val === 'string') return val;
+        if (val == null) return '';
+        return String(val);
+    } catch {
+        return '';
+    }
+}
+
+async function destroyAndCleanupClient(tenantId, reason) {
+    try {
+        const existingClient = clients.get(tenantId);
+        if (existingClient) {
+            try {
+                await existingClient.destroy();
+            } catch (e) {
+                console.warn(`[WA_WEB] Non-critical destroy error for tenant ${tenantId}:`, e?.message || e);
+            }
+        }
+    } finally {
+        clients.delete(tenantId);
+        qrCodes.delete(tenantId);
+        tenantCache.delete(tenantId);
+
+        // If initialization failed, wipe LocalAuth session so the next connect attempt can generate a fresh QR.
+        // (Corrupted sessions can cause whatsapp-web.js to hang without emitting a QR.)
+        if (reason === 'timeout' || reason === 'error' || reason === 'auth_failed') {
+            try {
+                const sessionPath = path.join(process.cwd(), '.wwebjs_auth', `session-${tenantId}`);
+                if (fs.existsSync(sessionPath)) {
+                    fs.rmSync(sessionPath, { recursive: true, force: true });
+                    console.log(`[WA_WEB] Removed LocalAuth session folder for tenant ${tenantId} due to ${reason}`);
+                }
+            } catch (e) {
+                console.warn(`[WA_WEB] Non-critical failed to remove LocalAuth session for tenant ${tenantId}:`, e?.message || e);
+            }
+        }
+
+        if (reason) {
+            clientStatus.set(tenantId, reason);
+        }
+    }
+}
 
 /**
  * Initialize WhatsApp Web client for a tenant
@@ -20,17 +68,44 @@ const clientStatus = new Map();
 async function initializeClient(tenantId) {
     console.log(`[WA_WEB] Initializing client for tenant: ${tenantId}`);
     
-    // Check if client already exists and is ready
+    // Avoid creating duplicate clients for the same tenant.
     if (clients.has(tenantId)) {
-        const existingClient = clients.get(tenantId);
-        if (clientStatus.get(tenantId) === 'ready') {
+        const status = clientStatus.get(tenantId) || 'not_initialized';
+
+        if (status === 'ready') {
             console.log(`[WA_WEB] Client already initialized and ready for tenant: ${tenantId}`);
             return { success: true, status: 'ready' };
+        }
+
+        // If a client is already in-flight, return current status and let it continue.
+        if (status === 'initializing' || status === 'qr_ready' || status === 'authenticated') {
+            console.log(`[WA_WEB] Client already exists for tenant ${tenantId} (status=${status}); reusing`);
+            return { success: true, status };
+        }
+
+        // For terminal/error states, destroy old client before retrying.
+        if (status === 'timeout' || status === 'error' || status === 'auth_failed' || status === 'disconnected') {
+            console.log(`[WA_WEB] Cleaning up previous client for tenant ${tenantId} (status=${status}) before re-init`);
+            await destroyAndCleanupClient(tenantId, 'disconnected');
         }
     }
 
     try {
         console.log(`[WA_WEB] Creating client WITH persistent auth (LocalAuth)`);
+
+        // Cache tenant record for message routing
+        try {
+            const { data: tenant, error } = await supabase
+                .from('tenants')
+                .select('*')
+                .eq('id', tenantId)
+                .single();
+            if (!error && tenant) {
+                tenantCache.set(tenantId, tenant);
+            }
+        } catch (e) {
+            console.warn(`[WA_WEB] Failed to preload tenant ${tenantId}:`, e?.message || e);
+        }
 
         const client = new Client({
             authStrategy: new LocalAuth({
@@ -39,6 +114,7 @@ async function initializeClient(tenantId) {
             }),
             puppeteer: {
                 headless: true,
+                executablePath: puppeteer18.executablePath(),
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -51,6 +127,15 @@ async function initializeClient(tenantId) {
             }
         });
 
+        // Extra events for visibility during init (helps diagnose timeouts)
+        client.on('loading_screen', (percent, message) => {
+            console.log(`[WA_WEB] Loading ${tenantId}: ${percent}% - ${safeToString(message)}`);
+        });
+
+        client.on('change_state', (state) => {
+            console.log(`[WA_WEB] State changed ${tenantId}: ${safeToString(state)}`);
+        });
+
         // QR Code event
         client.on('qr', async (qr) => {
             console.log(`[WA_WEB] QR Code generated for tenant: ${tenantId}`);
@@ -60,14 +145,45 @@ async function initializeClient(tenantId) {
                 clientStatus.set(tenantId, 'qr_ready');
                 
                 // Save QR code to database
-                await supabase
-                    .from('whatsapp_connections')
-                    .upsert({
-                        tenant_id: tenantId,
-                        qr_code: qrDataUrl,
-                        status: 'awaiting_scan',
-                        updated_at: new Date().toISOString()
-                    });
+                try {
+                    const sessionName = 'default';
+                    let existing = null;
+                    try {
+                        const r = await supabase
+                            .from('whatsapp_connections')
+                            .select('*')
+                            .eq('tenant_id', tenantId)
+                            .eq('session_name', sessionName)
+                            .single();
+                        existing = r?.data || null;
+                    } catch (e) {
+                        // In SQLite wrapper, "not found" typically comes back as an error; treat as no existing row.
+                        existing = null;
+                    }
+
+                    if (existing?.id) {
+                        await supabase
+                            .from('whatsapp_connections')
+                            .update({
+                                qr_code: qrDataUrl,
+                                status: 'awaiting_scan',
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', existing.id);
+                    } else {
+                        await supabase
+                            .from('whatsapp_connections')
+                            .insert({
+                                tenant_id: tenantId,
+                                session_name: sessionName,
+                                qr_code: qrDataUrl,
+                                status: 'awaiting_scan',
+                                updated_at: new Date().toISOString()
+                            });
+                    }
+                } catch (dbErr) {
+                    console.warn(`[WA_WEB] Non-critical DB save QR failed for ${tenantId}:`, dbErr?.message || dbErr);
+                }
             } catch (err) {
                 console.error(`[WA_WEB] QR Code generation error for tenant ${tenantId}:`, err);
             }
@@ -106,6 +222,81 @@ async function initializeClient(tenantId) {
             }
         });
 
+        // Inbound message → route through existing AI handler and reply via WhatsApp Web
+        client.on('message', async (msg) => {
+            try {
+                if (!msg || msg.fromMe) return;
+                if (clientStatus.get(tenantId) !== 'ready') return;
+
+                const body = typeof msg.body === 'string' ? msg.body.trim() : '';
+                if (!body) return;
+
+                const from = String(msg.from || '').replace(/@c\.us$/i, '').trim();
+                if (!from) return;
+
+                const tenant = tenantCache.get(tenantId);
+                if (!tenant) {
+                    // Best-effort re-fetch
+                    const { data: t } = await supabase
+                        .from('tenants')
+                        .select('*')
+                        .eq('id', tenantId)
+                        .single();
+                    if (t) tenantCache.set(tenantId, t);
+                }
+
+                const resolvedTenant = tenantCache.get(tenantId);
+                if (!resolvedTenant) {
+                    console.warn('[WA_WEB] No tenant found for inbound message:', tenantId);
+                    return;
+                }
+
+                // Capture outbound messages (main handler sends via Maytapi service)
+                const prevDesktop = !!global.desktopAgentMode;
+                const prevCaptured = global.capturedMessage;
+                const prevCapturedMessages = global.capturedMessages;
+                global.desktopAgentMode = true;
+                global.capturedMessage = null;
+                global.capturedMessages = [];
+
+                try {
+                    const customerHandler = require('../routes/handlers/customerHandler');
+                    const fakeReq = {
+                        tenant: resolvedTenant,
+                        message: {
+                            from,
+                            to: resolvedTenant.bot_phone_number || null,
+                            type: 'text',
+                            text: { body }
+                        }
+                    };
+                    const fakeRes = {
+                        status: () => ({ json: () => null }),
+                        json: () => null
+                    };
+
+                    await customerHandler.handleCustomer(fakeReq, fakeRes);
+                } finally {
+                    // Restore globals
+                    const outgoing = Array.isArray(global.capturedMessages) && global.capturedMessages.length
+                        ? global.capturedMessages
+                        : (global.capturedMessage ? [global.capturedMessage] : []);
+
+                    global.desktopAgentMode = prevDesktop;
+                    global.capturedMessage = prevCaptured;
+                    global.capturedMessages = prevCapturedMessages;
+
+                    // Send captured responses via WhatsApp Web (if any)
+                    for (const text of outgoing) {
+                        if (typeof text !== 'string' || !text.trim()) continue;
+                        await client.sendMessage(msg.from, text);
+                    }
+                }
+            } catch (e) {
+                console.error('[WA_WEB] Inbound message processing error:', e?.message || e);
+            }
+        });
+
         // Authenticated event
         client.on('authenticated', () => {
             console.log(`[WA_WEB] Client authenticated for tenant: ${tenantId}`);
@@ -116,23 +307,29 @@ async function initializeClient(tenantId) {
         client.on('disconnected', async (reason) => {
             console.log(`[WA_WEB] Client disconnected for tenant ${tenantId}:`, reason);
             clientStatus.set(tenantId, 'disconnected');
-            clients.delete(tenantId);
-            qrCodes.delete(tenantId);
+            await destroyAndCleanupClient(tenantId, 'disconnected');
             
             // Update database
-            await supabase
-                .from('whatsapp_connections')
-                .update({
-                    status: 'disconnected',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('tenant_id', tenantId);
+            try {
+                await supabase
+                    .from('whatsapp_connections')
+                    .update({
+                        status: 'disconnected',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('tenant_id', tenantId);
+            } catch (dbErr) {
+                console.warn(`[WA_WEB] Non-critical DB update disconnected failed for ${tenantId}:`, dbErr?.message || dbErr);
+            }
         });
 
         // Authentication failure event
         client.on('auth_failure', async (msg) => {
             console.error(`[WA_WEB] Authentication failure for tenant ${tenantId}:`, msg);
             clientStatus.set(tenantId, 'auth_failed');
+
+            // Destroy the client so the next connect attempt can generate a fresh QR/session.
+            await destroyAndCleanupClient(tenantId, 'auth_failed');
             
             // Update database
             await supabase
@@ -148,11 +345,27 @@ async function initializeClient(tenantId) {
         clients.set(tenantId, client);
         clientStatus.set(tenantId, 'initializing');
 
-        // Initialize client with timeout to prevent hanging
-        const initTimeout = setTimeout(() => {
-            console.error(`[WA_WEB] Initialization timeout for tenant ${tenantId}`);
+        // Initialize client with timeout to prevent hanging.
+        // WA Web can legitimately take >30s (first load, slow network, or session restore).
+        const initTimeoutMs = 120000; // 2 minutes
+        const initTimeout = setTimeout(async () => {
+            console.error(`[WA_WEB] Initialization timeout for tenant ${tenantId} after ${initTimeoutMs}ms`);
             clientStatus.set(tenantId, 'timeout');
-        }, 30000); // 30 second timeout
+            await destroyAndCleanupClient(tenantId, 'timeout');
+
+            // Best-effort update DB so UI reflects reality.
+            try {
+                await supabase
+                    .from('whatsapp_connections')
+                    .update({
+                        status: 'timeout',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('tenant_id', tenantId);
+            } catch (dbErr) {
+                console.warn(`[WA_WEB] Non-critical DB update timeout failed for ${tenantId}:`, dbErr?.message || dbErr);
+            }
+        }, initTimeoutMs);
 
         try {
             // Initialize in background - don't await to prevent API timeout
@@ -161,8 +374,11 @@ async function initializeClient(tenantId) {
                 console.log(`[WA_WEB] Client initialization complete for tenant ${tenantId}`);
             }).catch((err) => {
                 clearTimeout(initTimeout);
-                console.error(`[WA_WEB] Client initialization failed for tenant ${tenantId}:`, err);
+                console.error(`[WA_WEB] Client initialization failed for tenant ${tenantId}:`, err && err.stack ? err.stack : err);
                 clientStatus.set(tenantId, 'error');
+
+                // Destroy the client so future attempts can retry cleanly.
+                destroyAndCleanupClient(tenantId, 'error').catch(() => null);
             });
         } catch (err) {
             clearTimeout(initTimeout);
@@ -248,8 +464,16 @@ async function sendWebMessage(tenantId, phoneNumber, message) {
     }
 
     try {
-        // Format phone number for WhatsApp (add @c.us suffix)
-        const chatId = phoneNumber.includes('@c.us') ? phoneNumber : `${phoneNumber}@c.us`;
+        const chatId = toWhatsAppFormat(phoneNumber);
+        if (!chatId) {
+            throw new Error('Invalid recipient phone number');
+        }
+
+        // Validate recipient exists on WhatsApp to avoid false "sent" signals
+        const isRegistered = await client.isRegisteredUser(chatId);
+        if (!isRegistered) {
+            throw new Error('Recipient is not registered on WhatsApp');
+        }
         
         // Send message
         const sentMessage = await client.sendMessage(chatId, message);
@@ -283,8 +507,15 @@ async function sendWebImageMessage(tenantId, phoneNumber, caption, imageBase64Or
     }
 
     try {
-        // Format phone number
-        const chatId = phoneNumber.includes('@c.us') ? phoneNumber : `${phoneNumber}@c.us`;
+        const chatId = toWhatsAppFormat(phoneNumber);
+        if (!chatId) {
+            throw new Error('Invalid recipient phone number');
+        }
+
+        const isRegistered = await client.isRegisteredUser(chatId);
+        if (!isRegistered) {
+            throw new Error('Recipient is not registered on WhatsApp');
+        }
         
         // Create media from base64 or URL
         let media;

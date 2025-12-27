@@ -145,3 +145,6 @@ public/download/.wwebjs_cache/
 public/download/*.exe
 public/download/*.zip
 desktop-agent/.wwebjs_auth/
+
+# Local SQLite database (development only)
+local-database.db

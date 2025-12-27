@@ -18,52 +18,87 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // Clean phone number (remove spaces, dashes, etc.)
-        let cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-        
-        // Remove @c.us if user includes it
-        cleanPhone = cleanPhone.replace(/@c\.us$/i, '');
+        const normalizePhoneDigits = (value) => {
+            if (!value) return '';
+            const withoutSuffix = String(value).replace(/@c\.us$/i, '');
+            return withoutSuffix.replace(/\D/g, '');
+        };
 
-        console.log('[AUTH] Login attempt for phone:', cleanPhone);
-
-        // Try multiple phone number formats to find tenant
-        // Format 1: Just the number (e.g., 919537653927)
-        // Format 2: With @c.us suffix (e.g., 919537653927@c.us)
-        const phoneFormats = [
-            cleanPhone,
-            `${cleanPhone}@c.us`
-        ];
-
-        let tenant = null;
-        let tenantError = null;
-
-        // Try each phone format
-        for (const phoneFormat of phoneFormats) {
-            const { data, error } = await supabase
-                .from('tenants')
-                .select('*')
-                .eq('phone_number', phoneFormat)
-                .single();
-            
-            if (data && !error) {
-                tenant = data;
-                break;
-            }
-            tenantError = error;
+        const inputDigits = normalizePhoneDigits(phone);
+        if (!inputDigits) {
+            return res.status(400).json({
+                success: false,
+                error: 'Phone number is invalid'
+            });
         }
 
-        // Also try owner_whatsapp_number field
-        if (!tenant) {
+        console.log('[AUTH] Login attempt for phone digits:', inputDigits);
+
+        // Try multiple phone number formats to find tenant
+        // Format 1: Just digits (e.g., 919537653927)
+        // Format 2: With @c.us suffix (e.g., 919537653927@c.us)
+        const phoneFormats = [
+            inputDigits,
+            `${inputDigits}@c.us`
+        ];
+
+        const getTenantId = (tenantRow) => tenantRow?.id || tenantRow?.tenantId || tenantRow?.tenant_id;
+        const getBusinessName = (tenantRow) =>
+            tenantRow?.business_name ||
+            tenantRow?.businessName ||
+            tenantRow?.business ||
+            tenantRow?.tenant_name ||
+            tenantRow?.tenantName ||
+            tenantRow?.company_name ||
+            tenantRow?.companyName ||
+            tenantRow?.store_name ||
+            tenantRow?.storeName ||
+            tenantRow?.shop_name ||
+            tenantRow?.shopName ||
+            tenantRow?.name;
+        const getPrimaryPhone = (tenantRow) => tenantRow?.phone_number || tenantRow?.phoneNumber || tenantRow?.phone || tenantRow?.owner_whatsapp_number || tenantRow?.ownerWhatsappNumber;
+        const getPasswordField = (tenantRow) => tenantRow?.password || tenantRow?.pass || tenantRow?.pwd;
+
+        let tenant = null;
+
+        // Try a few likely column names first (fast path)
+        const phoneColumnsToTry = ['phone_number', 'phone', 'owner_whatsapp_number', 'owner_phone'];
+        for (const col of phoneColumnsToTry) {
+            if (tenant) break;
             for (const phoneFormat of phoneFormats) {
                 const { data, error } = await supabase
                     .from('tenants')
                     .select('*')
-                    .eq('owner_whatsapp_number', phoneFormat)
+                    .eq(col, phoneFormat)
                     .single();
-                
+
                 if (data && !error) {
                     tenant = data;
                     break;
+                }
+            }
+        }
+
+        // Fallback: allow login without country code or with extra formatting.
+        // We do a safe suffix match against stored digits across multiple possible fields.
+        // If ambiguous, fail.
+        if (!tenant) {
+            const { data: allTenants, error: listError } = await supabase
+                .from('tenants')
+                .select('*');
+
+            if (!listError && Array.isArray(allTenants)) {
+                const matches = allTenants.filter((t) => {
+                    const phoneDigits = normalizePhoneDigits(t.phone_number || t.phoneNumber || t.phone);
+                    const ownerDigits = normalizePhoneDigits(t.owner_whatsapp_number || t.ownerWhatsappNumber || t.owner_phone);
+                    return (
+                        (phoneDigits && phoneDigits.endsWith(inputDigits)) ||
+                        (ownerDigits && ownerDigits.endsWith(inputDigits))
+                    );
+                });
+
+                if (matches.length === 1) {
+                    tenant = matches[0];
                 }
             }
         }
@@ -76,27 +111,38 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // Check if password field exists, if not, check for default password
-        const storedPassword = tenant.password || tenant.business_name; // Default to business name if no password set
-        
+        // Check if password field exists, if not, fall back to business name
+        const storedPassword = getPasswordField(tenant) || getBusinessName(tenant);
+        if (!storedPassword) {
+            console.log('[AUTH] Tenant has no password or business name set:', getTenantId(tenant));
+            return res.status(401).json({
+                success: false,
+                error: 'Account not configured for password login'
+            });
+        }
+
         // Simple password comparison (you can enhance this with bcrypt later)
         if (password !== storedPassword) {
-            console.log('[AUTH] Invalid password for:', cleanPhone);
+            console.log('[AUTH] Invalid password for phone digits:', inputDigits);
             return res.status(401).json({
                 success: false,
                 error: 'Invalid phone number or password'
             });
         }
 
-        console.log('[AUTH] Login successful for:', tenant.business_name);
+        console.log('[AUTH] Login successful for:', getBusinessName(tenant) || getTenantId(tenant));
 
         // Create session object
         const session = {
-            tenantId: tenant.id,
-            businessName: tenant.business_name,
-            phoneNumber: tenant.phone_number,
+            tenantId: getTenantId(tenant),
+            businessName: getBusinessName(tenant) || inputDigits || String(getTenantId(tenant) || 'Sales Dashboard'),
+            phoneNumber: getPrimaryPhone(tenant),
             loginTime: new Date().toISOString()
         };
+
+        if (!session.tenantId || !session.businessName) {
+            console.warn('[AUTH] Login succeeded but session fields are incomplete:', session);
+        }
 
         res.json({
             success: true,

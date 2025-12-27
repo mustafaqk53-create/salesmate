@@ -4,6 +4,13 @@ const { supabase } = require('../../services/config');
 const { sendMessage, sendMessageWithImage } = require('../../services/whatsappService');
 const { sendViaDesktopAgent, isDesktopAgentOnline } = require('../../services/desktopAgentBridge');
 const { sendBroadcastViaWaha } = require('../../index');
+const { normalizePhone } = require('../../services/phoneUtils');
+const { getClientStatus, sendWebMessage, sendWebMessageWithMedia } = require('../../services/whatsappWebService');
+
+// In local SQLite, `broadcast_recipients` may be a legacy contact-list table.
+// Use a dedicated table for per-campaign delivery tracking.
+const RECIPIENT_TRACKING_TABLE =
+    process.env.USE_LOCAL_DB === 'true' ? 'broadcast_campaign_recipients' : 'broadcast_recipients';
 
 /**
  * POST /api/broadcast/send
@@ -50,6 +57,29 @@ router.post('/send', async (req, res) => {
             });
         }
 
+        // Normalize recipients (digits only + default country code logic from phoneUtils)
+            // Normalize recipients STRICTLY (digits only, length 10-15; add 91 for 10-digit)
+            const normalizeRecipientStrict = (value) => {
+                if (!value) return null;
+                const digits = String(value).replace(/\D/g, '');
+                if (digits.length < 10) return null;
+                let normalized = digits;
+                if (normalized.length === 10) normalized = '91' + normalized;
+                if (normalized.length < 10 || normalized.length > 15) return null;
+                return normalized;
+            };
+
+            const normalizedRecipients = (recipients || [])
+                .map(r => (typeof r === 'object' && r ? (r.phone || r.phone_number || r.to_phone_number || r.number) : r))
+                .map(p => normalizeRecipientStrict(p))
+                .filter(Boolean);
+        if (normalizedRecipients.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No valid recipient phone numbers after normalization'
+            });
+        }
+
         // Get tenant info
         const { data: tenant, error: tenantError } = await supabase
             .from('tenants')
@@ -73,7 +103,7 @@ router.post('/send', async (req, res) => {
             try {
                 const result = await sendBroadcastViaWaha(
                     'default', // Session name
-                    recipients,
+                    normalizedRecipients,
                     message,
                     imageBase64,
                     { batchSize, messageDelay, batchDelay }
@@ -99,6 +129,115 @@ router.post('/send', async (req, res) => {
             }
         }
 
+        // Priority 0.5: WhatsApp Web (FREE) when connected
+        // If Desktop Agent is offline, this prevents falling back to queued Maytapi sends.
+        if (scheduleType === 'now' && forceMethod !== 'maytapi' && forceMethod !== 'waha') {
+            const waWebStatus = getClientStatus(tenantId);
+            if (waWebStatus?.status === 'ready' && waWebStatus?.hasClient) {
+                console.log('[BROADCAST_API] ✅ WhatsApp Web READY - sending directly');
+
+                const batchSz = Math.max(1, parseInt(batchSize || 10, 10) || 10);
+                const msgDelay = Math.max(0, parseInt(messageDelay || 0, 10) || 0);
+                const bDelay = Math.max(0, parseInt(batchDelay || 0, 10) || 0);
+
+                const campaignId = `campaign_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                const sendAt = new Date().toISOString();
+
+                let totalSent = 0;
+                let totalFailed = 0;
+                const failures = [];
+                const perRecipient = [];
+
+                for (let i = 0; i < normalizedRecipients.length; i++) {
+                    const to = normalizedRecipients[i];
+                    try {
+                        if (messageType === 'image' && imageBase64) {
+                            await sendWebMessageWithMedia(tenantId, to, message, imageBase64);
+                        } else {
+                            await sendWebMessage(tenantId, to, message);
+                        }
+                        totalSent++;
+                        perRecipient.push({ to, status: 'sent', error: null });
+                    } catch (e) {
+                        totalFailed++;
+                        perRecipient.push({ to, status: 'failed', error: e?.message || String(e) });
+                        if (failures.length < 5) {
+                            failures.push({ to, error: e?.message || String(e) });
+                        }
+                    }
+
+                    // Per-message delay
+                    if (msgDelay > 0 && i < normalizedRecipients.length - 1) {
+                        await new Promise(r => setTimeout(r, msgDelay));
+                    }
+
+                    // Per-batch delay
+                    const atBatchEnd = ((i + 1) % batchSz === 0);
+                    if (bDelay > 0 && atBatchEnd && i < normalizedRecipients.length - 1) {
+                        await new Promise(r => setTimeout(r, bDelay));
+                    }
+                }
+
+                if (totalSent === 0 && totalFailed > 0) {
+                    return res.status(500).json({
+                        success: false,
+                        error: failures[0]?.error || 'All WhatsApp Web sends failed',
+                        method: 'whatsapp-web',
+                        details: { total: normalizedRecipients.length, sent: 0, failed: totalFailed, failures }
+                    });
+                }
+
+                // Save broadcast history so dashboard "Recent Broadcasts" shows this send
+                try {
+                    const now = new Date().toISOString();
+                    const scheduleRecords = perRecipient.map((r, idx) => ({
+                        tenant_id: tenantId,
+                        name: String(campaignName || '').slice(0, 255),
+                        phone_number: r.to,
+                        to_phone_number: r.to,
+                        campaign_id: campaignId,
+                        campaign_name: String(campaignName || '').slice(0, 255),
+                        message_text: String(message || '').slice(0, 4096),
+                        message_body: String(message || '').slice(0, 4096),
+                        image_url: (messageType === 'image' && imageBase64) ? imageBase64 : null,
+                        media_url: (messageType === 'image' && imageBase64) ? imageBase64 : null,
+                        scheduled_at: sendAt,
+                        status: r.status,
+                        delivery_status: r.status === 'sent' ? 'delivered' : 'failed',
+                        error_message: r.error || null,
+                        retry_count: 0,
+                        sequence_number: idx + 1,
+                        created_at: now,
+                        updated_at: now,
+                        processed_at: now,
+                        delivered_at: r.status === 'sent' ? now : null
+                    }));
+
+                    const { error: histErr } = await supabase
+                        .from('bulk_schedules')
+                        .insert(scheduleRecords);
+                    if (histErr) {
+                        console.warn('[BROADCAST_API] Warning: Failed to save WhatsApp Web broadcast history:', histErr);
+                    }
+                } catch (histCatch) {
+                    console.warn('[BROADCAST_API] Warning: Failed to save WhatsApp Web broadcast history:', histCatch?.message || histCatch);
+                }
+
+                return res.json({
+                    success: true,
+                    message: `Broadcast sent via WhatsApp Web! ${totalSent} sent, ${totalFailed} failed.`,
+                    method: 'whatsapp-web',
+                    details: {
+                        total: normalizedRecipients.length,
+                        sent: totalSent,
+                        failed: totalFailed,
+                        failures: failures.length ? failures : undefined,
+                        status: 'completed'
+                    }
+                });
+            }
+        }
+
         // Priority 1: Try Desktop Agent (FREE!)
         if (forceMethod !== 'maytapi' && forceMethod !== 'waha') {
             console.log('[BROADCAST_API] 🔍 Checking desktop agent availability...');
@@ -109,7 +248,7 @@ router.post('/send', async (req, res) => {
                 console.log('[BROADCAST_API] ✅ Desktop Agent ONLINE - Using FREE local WhatsApp!');
                 
                 const broadcastData = {
-                    recipients,
+                    recipients: normalizedRecipients,
                     message,
                     messageType: messageType || 'text',
                     imageBase64,
@@ -129,11 +268,15 @@ router.post('/send', async (req, res) => {
                     // Save each recipient to bulk_schedules table
                     const scheduleRecords = recipients.map(phoneNumber => ({
                         tenant_id: tenantId,
+                        name: campaignName,
                         phone_number: phoneNumber,
+                        to_phone_number: phoneNumber,
                         campaign_id: campaignId,
                         campaign_name: campaignName,
                         message_text: message,
+                        message_body: message,
                         image_url: imageBase64 ? 'data:image/png;base64,...' : null,
+                        media_url: imageBase64 ? 'data:image/png;base64,...' : null,
                         scheduled_at: new Date().toISOString(),
                         status: 'sent',
                         created_at: new Date().toISOString()
@@ -186,7 +329,7 @@ router.post('/send', async (req, res) => {
                     campaignName,
                     message,
                     new Date().toISOString(), // Send now
-                    recipients,
+                    normalizedRecipients,
                     imageBase64 // Image URL/base64
                 );
                 
@@ -203,10 +346,10 @@ router.post('/send', async (req, res) => {
                 
                 return res.json({
                     success: true,
-                    message: `Broadcast queued via Maytapi! Processing ${recipients.length} recipients in background.`,
+                    message: `Broadcast queued via Maytapi! Processing ${normalizedRecipients.length} recipients in background.`,
                     method: 'maytapi',
                     details: {
-                        total: recipients.length,
+                        total: normalizedRecipients.length,
                         status: 'queued',
                         result: result
                     }
@@ -239,8 +382,7 @@ router.post('/send', async (req, res) => {
                     campaign_name: campaignName,
                     message_type: messageType,
                     message_content: message,
-                    image_url: messageType === 'image' && imageBase64 ? imageBase64 : null,
-                    recipients: recipients,
+                    recipients: normalizedRecipients,
                     scheduled_at: scheduledTime.toISOString(),
                     status: 'scheduled',
                     created_at: new Date().toISOString()
@@ -262,7 +404,7 @@ router.post('/send', async (req, res) => {
                 details: {
                     campaignName,
                     scheduledTime: scheduledTime.toISOString(),
-                    recipientCount: recipients.length
+                    recipientCount: normalizedRecipients.length
                 }
             });
         }
@@ -394,11 +536,35 @@ router.get('/history/:tenantId', async (req, res) => {
 router.post('/groups/save', async (req, res) => {
     try {
         const { tenantId, groupName, contacts } = req.body;
+        const isLocalDb = process.env.USE_LOCAL_DB === 'true';
 
         if (!tenantId || !groupName || !contacts || contacts.length === 0) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: tenantId, groupName, contacts'
+            });
+        }
+
+        // Normalize contacts on save to avoid legacy/invalid formats breaking delivery
+        const normalizeRecipientStrict = (value) => {
+            if (!value) return null;
+            const digits = String(value).replace(/\D/g, '');
+            if (digits.length < 10) return null;
+            let normalized = digits;
+            if (normalized.length === 10) normalized = '91' + normalized;
+            if (normalized.length < 10 || normalized.length > 15) return null;
+            return normalized;
+        };
+
+        const normalizedContacts = [...new Set((contacts || [])
+            .map(c => (typeof c === 'object' && c ? (c.phone || c.phone_number || c.number) : c))
+            .map(normalizeRecipientStrict)
+            .filter(Boolean))];
+
+        if (normalizedContacts.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No valid contact phone numbers to save in this group'
             });
         }
 
@@ -418,18 +584,27 @@ router.post('/groups/save', async (req, res) => {
         }
 
         // Save the group
+        const insertData = {
+            tenant_id: tenantId,
+            group_name: groupName,
+            contacts: normalizedContacts,
+            contact_count: normalizedContacts.length
+        };
+        // Back-compat for older local schemas that had `name` + UNIQUE(tenant_id, name)
+        if (isLocalDb) insertData.name = groupName;
+
         const { data: group, error } = await supabase
             .from('contact_groups')
-            .insert({
-                tenant_id: tenantId,
-                group_name: groupName,
-                contacts: contacts,
-                contact_count: contacts.length
-            })
+            .insert(insertData)
             .select()
             .single();
 
         if (error) throw error;
+
+        if (isLocalDb && group && typeof group.contacts === 'string') {
+            try { group.contacts = JSON.parse(group.contacts); } catch (_) {}
+        }
+        if (group && !group.group_name && group.name) group.group_name = group.name;
 
         res.json({
             success: true,
@@ -437,9 +612,16 @@ router.post('/groups/save', async (req, res) => {
         });
     } catch (error) {
         console.error('[BROADCAST_API] Error saving contact group:', error);
+        const msg = error?.message || 'Failed to save contact group';
+        if (/UNIQUE constraint failed/i.test(msg) || /duplicate key value/i.test(msg)) {
+            return res.status(400).json({
+                success: false,
+                error: 'A group with this name already exists. Please choose a different name.'
+            });
+        }
         res.status(500).json({
             success: false,
-            error: error.message || 'Failed to save contact group'
+            error: msg
         });
     }
 });
@@ -451,6 +633,7 @@ router.post('/groups/save', async (req, res) => {
 router.get('/groups/:tenantId', async (req, res) => {
     try {
         const { tenantId } = req.params;
+        const isLocalDb = process.env.USE_LOCAL_DB === 'true';
 
         const { data: groups, error } = await supabase
             .from('contact_groups')
@@ -459,6 +642,15 @@ router.get('/groups/:tenantId', async (req, res) => {
             .order('created_at', { ascending: false });
 
         if (error) throw error;
+
+        if (isLocalDb && Array.isArray(groups)) {
+            for (const g of groups) {
+                if (g && typeof g.contacts === 'string') {
+                    try { g.contacts = JSON.parse(g.contacts); } catch (_) {}
+                }
+                if (g && !g.group_name && g.name) g.group_name = g.name;
+            }
+        }
 
         res.json({
             success: true,
@@ -510,7 +702,7 @@ router.get('/campaign-report/:campaignId', async (req, res) => {
         const { campaignId } = req.params;
 
         const { data: recipients, error } = await supabase
-            .from('broadcast_recipients')
+            .from(RECIPIENT_TRACKING_TABLE)
             .select('phone, status, sent_at, error_message')
             .eq('campaign_id', campaignId)
             .order('phone', { ascending: true });
@@ -559,7 +751,7 @@ router.get('/campaign-report/:campaignId/export', async (req, res) => {
         const { campaignId } = req.params;
 
         const { data: recipients, error } = await supabase
-            .from('broadcast_recipients')
+            .from(RECIPIENT_TRACKING_TABLE)
             .select('phone, status, sent_at, error_message')
             .eq('campaign_id', campaignId)
             .order('phone', { ascending: true });

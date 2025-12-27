@@ -13,9 +13,42 @@ router.get('/list/:tenantId', async (req, res) => {
   try {
     const { customers, error } = await customerProfileService.searchCustomers({ tenantId, phone, name, minSpent, maxSpent, minOrderDate, maxOrderDate });
     if (error) return res.status(500).json({ success: false, error: error.message || error, customers: [] });
-    res.json({ success: true, customers });
+    // Normalize payload for dashboard.html (expects `name` and `phone`)
+    const normalized = (customers || []).map(c => ({
+      ...c,
+      phone: c.phone || c.phone_number || c.phoneNumber || null,
+      name: c.name || c.business_name || c.first_name || c.customer_name || null
+    }));
+    res.json({ success: true, customers: normalized });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, customers: [] });
+  }
+});
+
+// GET /api/customers/lookup/:tenantId?phone=... - Find a customer by phone (normalized)
+router.get('/lookup/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+  const { phone } = req.query;
+  try {
+    const { customer, error } = await customerProfileService.getCustomerByPhone(tenantId, phone);
+    if (error) return res.status(500).json({ success: false, error: error.message || String(error) });
+    return res.json({ success: true, customer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+// POST /api/customers/upsert/:tenantId - Create or update a customer profile by phone
+router.post('/upsert/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+  const { phone, ...profileData } = req.body || {};
+
+  try {
+    if (!phone) return res.status(400).json({ success: false, error: 'phone is required' });
+    const customer = await customerProfileService.upsertCustomerByPhone(tenantId, phone, profileData);
+    return res.json({ success: true, customer });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
   }
 });
 const customerNotesService = require('../../services/customerNotesService');
